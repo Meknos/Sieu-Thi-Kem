@@ -1,9 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest } from 'next/server';
-import { PDFParse } from 'pdf-parse';
 
 export const runtime = 'nodejs';
+
+// Dynamic import — works for both CJS and ESM versions of pdf-parse
+// Using dynamic import prevents Vercel from bundling it (respects serverExternalPackages)
+async function parsePDF(buffer: Buffer): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import('pdf-parse');
+  const pdfParse = (mod.default || mod) as (buf: Buffer, opts?: object) => Promise<{ text: string }>;
+  const result = await pdfParse(buffer, { max: 0 });
+  return result.text || '';
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,36 +25,14 @@ export async function POST(request: NextRequest) {
     let items: ParsedItem[] = [];
 
     if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-      const data = new Uint8Array(buffer);
-      const parser = new PDFParse({ data });
-
-      // Strategy 1: getTable() — for PDFs with vector-drawn table borders
-      try {
-        const tableResult = await (parser as any).getTable?.();
-        if (tableResult?.pages?.length) {
-          for (const page of tableResult.pages) {
-            for (const table of (page.tables || [])) {
-              items.push(...parseTableData(table));
-            }
-          }
-        }
-      } catch { /* getTable() may not exist */ }
-
-      // Strategy 2: getText() — always runs, used for text preview + fallback
-      const textResult = await parser.getText({ lineEnforce: true });
-      text = textResult.text || '';
-
-      if (items.length === 0) {
-        items = parseInvoiceText(text);
-      }
-
-      await parser.destroy();
+      text = await parsePDF(buffer);
+      items = parseInvoiceText(text);
     } else {
       text = buffer.toString('utf-8');
       items = parseInvoiceText(text);
     }
 
-    // Dedup + sort
+    // Dedup + sort by STT
     const seen = new Set<string>();
     const uniqueItems = items
       .filter(item => {
