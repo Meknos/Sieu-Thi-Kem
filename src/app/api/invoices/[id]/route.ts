@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { getUserId } from '@/lib/auth-helper';

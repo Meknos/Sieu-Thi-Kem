@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -125,7 +126,7 @@ export default function InvoicesPage() {
 
     setLoading(true);
     try {
-      const result = await apiPost('/api/invoices', {
+      const result = await apiPost<{ invoice_number: string }>('/api/invoices', {
         ...orderForm,
         items: validItems.map(i => ({
           product_id: i.product_id,

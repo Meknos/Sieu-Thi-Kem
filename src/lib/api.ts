@@ -11,7 +11,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   return {};
 }
 
-export async function api<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function api<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeader();
   const res = await fetch(path, {
     headers: {
@@ -26,15 +26,15 @@ export async function api<T = any>(path: string, options?: RequestInit): Promise
   return data as T;
 }
 
-export const apiGet = <T = any>(path: string) => api<T>(path);
+export const apiGet = <T = unknown>(path: string) => api<T>(path);
 
-export const apiPost = <T = any>(path: string, body: any) =>
+export const apiPost = <T = unknown>(path: string, body: unknown) =>
   api<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
-export const apiPut = <T = any>(path: string, body: any) =>
+export const apiPut = <T = unknown>(path: string, body: unknown) =>
   api<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 
-export const apiPatch = <T = any>(path: string, body: any) =>
+export const apiPatch = <T = unknown>(path: string, body: unknown) =>
   api<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
 export const apiDelete = (path: string) =>

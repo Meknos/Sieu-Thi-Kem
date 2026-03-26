@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+
 import { AlertTriangle } from 'lucide-react';
 
 interface ConfirmOptions {
@@ -32,8 +33,11 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 export function ConfirmDialog() {
   const [state, setState] = useState<ConfirmState | null>(null);
 
-  // Register global setter
-  globalSetConfirm = setState;
+  // Register global setter in effect (not during render)
+  useEffect(() => {
+    globalSetConfirm = setState;
+    return () => { globalSetConfirm = null; };
+  }, []);
 
   const handleConfirm = useCallback(() => {
     state?.resolve(true);
