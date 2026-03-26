@@ -6,16 +6,11 @@ import Modal from '@/components/Modal';
 import { Plus, Search, Edit2, Trash2, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
+import { confirm } from '@/components/ConfirmDialog';
 import type { Product, ProductInput } from '@/lib/types';
 import toast from 'react-hot-toast';
 
-const demoProducts: Product[] = [
-  { id: '1', user_id: '', code: 'XM001', name: 'Xi măng PCB40 Hà Tiên', unit: 'bao', purchase_price: 85000, selling_price: 95000, category: 'Vật liệu xây dựng', is_active: true, created_at: '', updated_at: '' },
-  { id: '2', user_id: '', code: 'TH001', name: 'Thép cuộn phi 10 Hòa Phát', unit: 'kg', purchase_price: 14500, selling_price: 16000, category: 'Sắt thép', is_active: true, created_at: '', updated_at: '' },
-  { id: '3', user_id: '', code: 'GO001', name: 'Gạch ống 4 lỗ', unit: 'viên', purchase_price: 800, selling_price: 1100, category: 'Vật liệu xây dựng', is_active: true, created_at: '', updated_at: '' },
-  { id: '4', user_id: '', code: 'SN001', name: 'Sơn nước Dulux nội thất 5L', unit: 'thùng', purchase_price: 320000, selling_price: 380000, category: 'Sơn', is_active: true, created_at: '', updated_at: '' },
-  { id: '5', user_id: '', code: 'TL001', name: 'Tôn lợp 5 sóng 0.35mm', unit: 'mét', purchase_price: 72000, selling_price: 85000, category: 'Tôn', is_active: true, created_at: '', updated_at: '' },
-];
+
 
 const emptyProduct: ProductInput = {
   code: '',
@@ -23,40 +18,38 @@ const emptyProduct: ProductInput = {
   unit: 'cái',
   purchase_price: 0,
   selling_price: 0,
-  category: '',
   description: '',
 };
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>(demoProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [inventory, setInventory] = useState<Record<string, number>>({}); // product_id → quantity
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProductInput>(emptyProduct);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  async function loadProducts() {
+  async function loadAll() {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (data && data.length > 0) {
-        setProducts(data);
+      const [{ data: prods }, { data: invData }] = await Promise.all([
+        supabase.from('products').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+        supabase.from('inventory').select('product_id, quantity'),
+      ]);
+      if (prods) setProducts(prods);
+      if (invData) {
+        const map: Record<string, number> = {};
+        invData.forEach(i => { map[i.product_id] = Number(i.quantity); });
+        setInventory(map);
       }
-    } catch (e) {
-      console.log('Using demo data');
-    }
+    } catch { /* Supabase not connected */ }
   }
 
   const filtered = products.filter(
     (p) =>
+      !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.code.toLowerCase().includes(search.toLowerCase())
   );
@@ -75,7 +68,6 @@ export default function ProductsPage() {
       unit: product.unit,
       purchase_price: product.purchase_price,
       selling_price: product.selling_price,
-      category: product.category || '',
       description: product.description || '',
     });
     setShowModal(true);
@@ -106,7 +98,7 @@ export default function ProductsPage() {
         toast.success('Thêm hàng hóa thành công');
       }
 
-      await loadProducts();
+      await loadAll();
       setShowModal(false);
     } catch (error: any) {
       toast.error(error.message || 'Có lỗi xảy ra');
@@ -128,21 +120,27 @@ export default function ProductsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Bạn có chắc muốn xóa hàng hóa này?')) return;
+  async function handleDelete(product: Product) {
+    const stock = inventory[product.id] ?? 0;
+    if (stock > 0) {
+      toast.error(`Không thể xóa: "${product.name}" còn ${stock} trong tồn kho. Bán hết hàng trước.`);
+      return;
+    }
+    if (!await confirm({
+      title: 'Xóa hàng hóa',
+      message: `Xóa "${product.name}"? Hành động này sẽ ẩn sản phẩm khỏi toàn bộ hệ thống.`,
+      confirmText: 'Xóa',
+      danger: true,
+    })) return;
 
     try {
-      const { error } = await supabase
-        .from('products')
-        .update({ is_active: false })
-        .eq('id', id);
-
-      if (error) throw error;
-      toast.success('Đã xóa');
-      await loadProducts();
-    } catch {
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      toast.success('Đã xóa (demo)');
+      const res = await fetch(`/api/products/${product.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Lỗi xóa');
+      toast.success(`Đã xóa "${product.name}"`);
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || 'Không thể xóa hàng hóa');
     }
   }
 
@@ -179,20 +177,21 @@ export default function ProductsPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: 48 }}>STT</th>
                   <th>Mã HH</th>
                   <th>Tên hàng hóa</th>
                   <th>ĐVT</th>
-                  <th>Danh mục</th>
                   <th className="text-right">Giá mua</th>
                   <th className="text-right">Giá bán</th>
                   <th className="text-right">Lợi nhuận</th>
+                  <th className="text-right">Tồn kho</th>
                   <th className="text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state">
                         <Package className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <h3>Chưa có hàng hóa</h3>
@@ -201,20 +200,24 @@ export default function ProductsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((product) => (
-                    <tr key={product.id}>
+                  filtered.map((product, idx) => (
+                <tr key={product.id}>
+                      <td className="text-center text-gray-400 text-sm">{idx + 1}</td>
                       <td className="font-mono font-medium text-blue-600">{product.code}</td>
                       <td className="font-medium">{product.name}</td>
                       <td>{product.unit}</td>
-                      <td>
-                        {product.category && (
-                          <span className="badge badge-info">{product.category}</span>
-                        )}
-                      </td>
                       <td className="text-right font-mono">{formatCurrency(product.purchase_price)}</td>
                       <td className="text-right font-mono">{formatCurrency(product.selling_price)}</td>
                       <td className="text-right font-mono text-green-600">
                         {formatCurrency(product.selling_price - product.purchase_price)}
+                      </td>
+                      <td className="text-right font-mono">
+                        {(() => {
+                          const qty = inventory[product.id] ?? 0;
+                          if (qty <= 0) return <span className="badge badge-danger">Hết</span>;
+                          if (qty < 10) return <span className="badge badge-warning">{qty}</span>;
+                          return <span className="badge badge-success">{qty}</span>;
+                        })()}
                       </td>
                       <td className="text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -226,9 +229,11 @@ export default function ProductsPage() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(product.id)}
+                            onClick={() => handleDelete(product)}
                             className="btn btn-ghost btn-sm text-red-500"
-                            title="Xóa"
+                            title={(inventory[product.id] ?? 0) > 0 ? `Còn ${inventory[product.id]} tồn kho, không thể xóa` : 'Xóa hàng hóa'}
+                            disabled={(inventory[product.id] ?? 0) > 0}
+                            style={{ opacity: (inventory[product.id] ?? 0) > 0 ? 0.3 : 1 }}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -296,15 +301,6 @@ export default function ProductsPage() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             placeholder="Nhập tên hàng hóa"
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Danh mục</label>
-          <input
-            className="form-input"
-            value={form.category || ''}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            placeholder="VD: Vật liệu xây dựng"
           />
         </div>
         <div className="form-row">

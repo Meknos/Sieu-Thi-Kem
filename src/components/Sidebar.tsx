@@ -8,15 +8,16 @@ import {
   ShoppingCart,
   Receipt,
   FileText,
-  BarChart3,
   BookOpen,
   CalendarDays,
   Calendar,
   Settings,
   Warehouse,
   Upload,
+  LogOut,
   X,
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -118,8 +119,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-4 border-t border-white/8">
-          <div className="text-xs text-gray-500 text-center">
+        <div className="px-4 py-4 border-t border-white/8 space-y-2">
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.href = '/auth';
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Đăng xuất
+          </button>
+          <div className="text-xs text-gray-600 text-center">
             © 2026 Hóa Đơn App v1.0
           </div>
         </div>

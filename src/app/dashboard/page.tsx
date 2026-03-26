@@ -14,31 +14,23 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { apiGet } from '@/lib/api';
 import type { DashboardStats, Sale, Purchase } from '@/lib/types';
 
-// Demo data for when Supabase is not connected
-const demoStats: DashboardStats = {
-  total_products: 24,
-  total_revenue_today: 3500000,
-  total_revenue_month: 85000000,
-  total_revenue_year: 920000000,
-  total_purchases_month: 62000000,
-  low_stock_count: 3,
-  total_invoices_month: 47,
-  vat_payable_month: 6800000,
+const emptyStats: DashboardStats = {
+  total_products: 0,
+  total_revenue_today: 0,
+  total_revenue_month: 0,
+  total_revenue_year: 0,
+  total_purchases_month: 0,
+  low_stock_count: 0,
+  total_invoices_month: 0,
+  vat_payable_month: 0,
 };
 
-const demoRecentSales = [
-  { id: '1', sale_date: '2026-03-25', customer_name: 'Nguyễn Văn A', total_with_vat: 2500000, product: { name: 'Xi măng PCB40' } },
-  { id: '2', sale_date: '2026-03-25', customer_name: 'Trần Thị B', total_with_vat: 1800000, product: { name: 'Thép phi 10' } },
-  { id: '3', sale_date: '2026-03-24', customer_name: 'Lê Văn C', total_with_vat: 4200000, product: { name: 'Gạch ống' } },
-  { id: '4', sale_date: '2026-03-24', customer_name: 'Phạm Thị D', total_with_vat: 950000, product: { name: 'Sơn nước' } },
-  { id: '5', sale_date: '2026-03-23', customer_name: 'Hoàng Văn E', total_with_vat: 3100000, product: { name: 'Tôn lợp' } },
-];
-
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats>(demoStats);
-  const [recentSales, setRecentSales] = useState<any[]>(demoRecentSales);
+  const [stats, setStats] = useState<DashboardStats>(emptyStats);
+  const [recentSales, setRecentSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -48,64 +40,14 @@ export default function DashboardPage() {
   async function loadDashboardData() {
     try {
       setLoading(true);
-
-      // Try to fetch real data from Supabase
-      const { data: products } = await supabase
-        .from('products')
-        .select('id', { count: 'exact' });
-
-      if (products !== null) {
-        // Real data is available
-        const today = new Date().toISOString().split('T')[0];
-        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-          .toISOString().split('T')[0];
-        const yearStart = new Date(new Date().getFullYear(), 0, 1)
-          .toISOString().split('T')[0];
-
-        const [
-          { count: totalProducts },
-          { data: salesToday },
-          { data: salesMonth },
-          { data: salesYear },
-          { data: purchasesMonth },
-          { data: lowStockItems },
-          { count: invoicesMonth },
-          { data: recent },
-        ] = await Promise.all([
-          supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_active', true),
-          supabase.from('sales').select('total_with_vat').gte('sale_date', today),
-          supabase.from('sales').select('total_with_vat, vat_amount').gte('sale_date', monthStart),
-          supabase.from('sales').select('total_with_vat').gte('sale_date', yearStart),
-          supabase.from('purchases').select('total_amount').gte('purchase_date', monthStart),
-          supabase.from('inventory').select('*').lt('quantity', 10),
-          supabase.from('invoices').select('*', { count: 'exact', head: true }).gte('invoice_date', monthStart),
-          supabase.from('sales').select('*, product:products(name)').order('created_at', { ascending: false }).limit(5),
-        ]);
-
-        const revenueToday = salesToday?.reduce((sum: number, s: any) => sum + Number(s.total_with_vat), 0) || 0;
-        const revenueMonth = salesMonth?.reduce((sum: number, s: any) => sum + Number(s.total_with_vat), 0) || 0;
-        const revenueYear = salesYear?.reduce((sum: number, s: any) => sum + Number(s.total_with_vat), 0) || 0;
-        const costMonth = purchasesMonth?.reduce((sum: number, p: any) => sum + Number(p.total_amount), 0) || 0;
-        const vatMonth = salesMonth?.reduce((sum: number, s: any) => sum + Number(s.vat_amount), 0) || 0;
-
-        setStats({
-          total_products: totalProducts || 0,
-          total_revenue_today: revenueToday,
-          total_revenue_month: revenueMonth,
-          total_revenue_year: revenueYear,
-          total_purchases_month: costMonth,
-          low_stock_count: lowStockItems?.length || 0,
-          total_invoices_month: invoicesMonth || 0,
-          vat_payable_month: vatMonth,
-        });
-
-        if (recent && recent.length > 0) {
-          setRecentSales(recent);
-        }
-      }
-    } catch (error) {
-      // Use demo data if Supabase is not configured
-      console.log('Using demo data - Supabase not configured');
+      const data = await apiGet<DashboardStats>('/api/dashboard');
+      // Only update if we got real data
+      if (data) setStats(data);
+      // Fetch recent sales
+      const sales = await apiGet<any[]>('/api/sales');
+      if (sales?.length) setRecentSales(sales.slice(0, 5));
+    } catch {
+      // API not available
     } finally {
       setLoading(false);
     }

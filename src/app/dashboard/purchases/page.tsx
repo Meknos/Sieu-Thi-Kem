@@ -3,55 +3,180 @@
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Modal from '@/components/Modal';
-import { Plus, Search, ShoppingCart } from 'lucide-react';
+import { Plus, Search, ShoppingCart, Trash2, PlusCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import type { Purchase, Product, PurchaseInput } from '@/lib/types';
+import { confirm } from '@/components/ConfirmDialog';
+import type { Purchase, Product } from '@/lib/types';
 import toast from 'react-hot-toast';
 
-const demoProducts: Product[] = [
-  { id: '1', user_id: '', code: 'XM001', name: 'Xi măng PCB40 Hà Tiên', unit: 'bao', purchase_price: 85000, selling_price: 95000, category: '', is_active: true, created_at: '', updated_at: '' },
-  { id: '2', user_id: '', code: 'TH001', name: 'Thép cuộn phi 10', unit: 'kg', purchase_price: 14500, selling_price: 16000, category: '', is_active: true, created_at: '', updated_at: '' },
-];
+interface PurchaseItem {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+}
 
-const demoPurchases: (Purchase & { product?: Product })[] = [
-  { id: '1', user_id: '', product_id: '1', purchase_date: '2026-03-20', quantity: 100, unit_price: 85000, total_amount: 8500000, supplier_name: 'CTCP Xi Măng Hà Tiên', supplier_invoice: 'NCC-2026-001', created_at: '', updated_at: '', product: demoProducts[0] },
-  { id: '2', user_id: '', product_id: '2', purchase_date: '2026-03-18', quantity: 500, unit_price: 14500, total_amount: 7250000, supplier_name: 'Hòa Phát', supplier_invoice: 'NCC-2026-002', created_at: '', updated_at: '', product: demoProducts[1] },
-];
+const emptyItem = (): PurchaseItem => ({ product_id: '', quantity: 0, unit_price: 0 });
 
 export default function PurchasesPage() {
-  const [purchases, setPurchases] = useState<(Purchase & { product?: Product })[]>(demoPurchases);
-  const [products, setProducts] = useState<Product[]>(demoProducts);
+  const [purchases, setPurchases] = useState<(Purchase & { product?: Product })[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState<PurchaseInput>({
-    product_id: '',
-    purchase_date: new Date().toISOString().split('T')[0],
-    quantity: 0,
-    unit_price: 0,
-    supplier_name: '',
-    supplier_invoice: '',
-    notes: '',
-  });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierInvoice, setSupplierInvoice] = useState('');
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState<PurchaseItem[]>([emptyItem()]);
+
+  useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     try {
       const [{ data: productsData }, { data: purchasesData }] = await Promise.all([
-        supabase.from('products').select('*').eq('is_active', true),
+        supabase.from('products').select('*').eq('is_active', true).order('name'),
         supabase.from('purchases').select('*, product:products(*)').order('purchase_date', { ascending: false }),
       ]);
+      if (productsData) setProducts(productsData);
+      if (purchasesData) setPurchases(purchasesData);
+    } catch { /* Supabase not connected */ }
+  }
 
-      if (productsData && productsData.length > 0) setProducts(productsData);
-      if (purchasesData && purchasesData.length > 0) setPurchases(purchasesData);
-    } catch {
-      console.log('Using demo data');
+  function openModal() {
+    setPurchaseDate(new Date().toISOString().split('T')[0]);
+    setSupplierName('');
+    setSupplierInvoice('');
+    setNotes('');
+    setItems([emptyItem()]);
+    setShowModal(true);
+  }
+
+  function updateItem(idx: number, field: keyof PurchaseItem, value: string | number) {
+    setItems(prev => {
+      const next = [...prev];
+      if (field === 'product_id') {
+        const product = products.find(p => p.id === value);
+        next[idx] = { ...next[idx], product_id: value as string, unit_price: product?.purchase_price || 0 };
+      } else {
+        next[idx] = { ...next[idx], [field]: Number(value) };
+      }
+      return next;
+    });
+  }
+
+  function addItem() { setItems(prev => [...prev, emptyItem()]); }
+  function removeItem(idx: number) {
+    if (items.length === 1) return;
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  const grandTotal = items.reduce((sum, it) => sum + it.quantity * it.unit_price, 0);
+
+  async function handleSave() {
+    const validItems = items.filter(it => it.product_id && it.quantity > 0);
+    if (validItems.length === 0) {
+      toast.error('Vui lòng thêm ít nhất một mặt hàng với số lượng > 0');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+
+      if (!userId) {
+        toast.error('Chưa đăng nhập. Vui lòng đăng nhập để lưu dữ liệu.');
+        setLoading(false);
+        return;
+      }
+
+      // Snapshot inventory BEFORE inserting (to detect if trigger ran)
+      const beforeMap: Record<string, number> = {};
+      for (const it of validItems) {
+        const { data: inv } = await supabase
+          .from('inventory')
+          .select('quantity')
+          .eq('product_id', it.product_id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        beforeMap[it.product_id] = Number(inv?.quantity ?? 0);
+      }
+
+      // Insert purchase records
+      const rows = validItems.map(it => ({
+        user_id: userId,
+        product_id: it.product_id,
+        purchase_date: purchaseDate,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        total_amount: it.quantity * it.unit_price,
+        supplier_name: supplierName || null,
+        supplier_invoice: supplierInvoice || null,
+        notes: notes || null,
+      }));
+
+      const { error: purchaseError } = await supabase.from('purchases').insert(rows);
+      if (purchaseError) throw purchaseError;
+
+      // Check inventory AFTER insert — if trigger ran, quantity already increased
+      for (const it of validItems) {
+        const { data: afterInv } = await supabase
+          .from('inventory')
+          .select('id, quantity')
+          .eq('product_id', it.product_id)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        const afterQty = Number(afterInv?.quantity ?? 0);
+        const expectedQty = beforeMap[it.product_id] + it.quantity;
+        const triggerRan = Math.abs(afterQty - expectedQty) < 0.001;
+
+        if (!triggerRan) {
+          // Trigger didn't run — do manual inventory update
+          if (afterInv) {
+            await supabase.from('inventory').update({
+              quantity: expectedQty,
+              last_updated: new Date().toISOString(),
+            }).eq('id', afterInv.id);
+          } else {
+            await supabase.from('inventory').insert({
+              user_id: userId,
+              product_id: it.product_id,
+              quantity: it.quantity,
+              last_updated: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      toast.success(`Nhập hàng thành công ${validItems.length} mặt hàng`);
+      setShowModal(false);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi nhập hàng');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!await confirm({
+      title: 'Xóa phiếu nhập',
+      message: 'Xóa phiếu nhập hàng này? Tồn kho sẽ KHÔNG được tự động hoàn lại.',
+      confirmText: 'Xóa',
+      danger: true,
+    })) return;
+    try {
+      const { error } = await supabase.from('purchases').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Đã xóa phiếu nhập');
+      setPurchases(prev => prev.filter(p => p.id !== id));
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi xóa phiếu nhập');
     }
   }
 
@@ -66,56 +191,6 @@ export default function PurchasesPage() {
 
   const totalFiltered = filtered.reduce((sum, p) => sum + p.total_amount, 0);
 
-  function handleProductSelect(productId: string) {
-    const product = products.find((p) => p.id === productId);
-    setForm({
-      ...form,
-      product_id: productId,
-      unit_price: product?.purchase_price || 0,
-    });
-  }
-
-  async function handleSave() {
-    if (!form.product_id || form.quantity <= 0) {
-      toast.error('Vui lòng chọn hàng hóa và nhập số lượng');
-      return;
-    }
-
-    const total = form.quantity * form.unit_price;
-    setLoading(true);
-
-    try {
-      const { error } = await supabase.from('purchases').insert({
-        ...form,
-        total_amount: total,
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-      });
-
-      if (error) throw error;
-      toast.success('Nhập hàng thành công');
-      await loadData();
-      setShowModal(false);
-    } catch {
-      const product = products.find((p) => p.id === form.product_id);
-      setPurchases((prev) => [
-        {
-          ...form,
-          id: Date.now().toString(),
-          user_id: '',
-          total_amount: total,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          product,
-        } as Purchase & { product?: Product },
-        ...prev,
-      ]);
-      setShowModal(false);
-      toast.success('Nhập hàng thành công (demo)');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <>
       <Header
@@ -123,7 +198,7 @@ export default function PurchasesPage() {
         subtitle="Quản lý phiếu nhập hàng / mua vào"
         onMenuClick={() => {}}
         actions={
-          <button onClick={() => { setForm({ product_id: '', purchase_date: new Date().toISOString().split('T')[0], quantity: 0, unit_price: 0, supplier_name: '', supplier_invoice: '', notes: '' }); setShowModal(true); }} className="btn btn-primary">
+          <button onClick={openModal} className="btn btn-primary">
             <Plus className="w-4 h-4" /> Nhập hàng
           </button>
         }
@@ -150,14 +225,11 @@ export default function PurchasesPage() {
           </div>
         </div>
 
-        {/* Summary */}
         <div className="mb-4 p-4 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-between">
           <span className="text-sm text-blue-700">
-            Tổng: <strong>{filtered.length}</strong> phiếu nhập
+            Tổng: <strong>{filtered.length}</strong> dòng nhập
           </span>
-          <span className="text-sm font-bold text-blue-700">
-            {formatCurrency(totalFiltered)}
-          </span>
+          <span className="text-sm font-bold text-blue-700">{formatCurrency(totalFiltered)}</span>
         </div>
 
         <div className="card">
@@ -165,18 +237,20 @@ export default function PurchasesPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: 48 }}>STT</th>
                   <th>Ngày nhập</th>
                   <th>Hàng hóa</th>
                   <th>Nhà cung cấp</th>
                   <th className="text-right">Số lượng</th>
                   <th className="text-right">Đơn giá</th>
                   <th className="text-right">Thành tiền</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={8}>
                       <div className="empty-state">
                         <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <h3>Chưa có phiếu nhập</h3>
@@ -187,6 +261,7 @@ export default function PurchasesPage() {
                 ) : (
                   filtered.map((purchase) => (
                     <tr key={purchase.id}>
+                      <td className="text-center text-gray-400 text-sm">{filtered.indexOf(purchase) + 1}</td>
                       <td className="font-mono">{formatDate(purchase.purchase_date)}</td>
                       <td className="font-medium">{purchase.product?.name || '—'}</td>
                       <td>{purchase.supplier_name || '—'}</td>
@@ -194,6 +269,15 @@ export default function PurchasesPage() {
                       <td className="text-right font-mono">{formatCurrency(purchase.unit_price)}</td>
                       <td className="text-right font-mono font-medium text-red-600">
                         {formatCurrency(purchase.total_amount)}
+                      </td>
+                      <td className="text-center">
+                        <button
+                          onClick={() => handleDelete(purchase.id)}
+                          className="btn btn-ghost btn-sm text-red-500"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -207,9 +291,13 @@ export default function PurchasesPage() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Nhập hàng mới"
+        title="Phiếu nhập hàng"
         footer={
           <>
+            <div className="flex-1 text-left">
+              <span className="text-sm text-gray-500">Tổng cộng: </span>
+              <span className="font-bold text-red-600">{formatCurrency(grandTotal)}</span>
+            </div>
             <button onClick={() => setShowModal(false)} className="btn btn-secondary">Hủy</button>
             <button onClick={handleSave} className="btn btn-primary" disabled={loading}>
               {loading ? 'Đang lưu...' : 'Lưu phiếu nhập'}
@@ -217,82 +305,64 @@ export default function PurchasesPage() {
           </>
         }
       >
-        <div className="form-group">
-          <label className="form-label">Hàng hóa *</label>
-          <select
-            className="form-select"
-            value={form.product_id}
-            onChange={(e) => handleProductSelect(e.target.value)}
-          >
-            <option value="">-- Chọn hàng hóa --</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
-            ))}
-          </select>
-        </div>
         <div className="form-row">
           <div className="form-group">
             <label className="form-label">Ngày nhập</label>
-            <input
-              className="form-input"
-              type="date"
-              value={form.purchase_date}
-              onChange={(e) => setForm({ ...form, purchase_date: e.target.value })}
-            />
+            <input className="form-input" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
           </div>
           <div className="form-group">
-            <label className="form-label">Số HĐ nhà cung cấp</label>
-            <input
-              className="form-input"
-              value={form.supplier_invoice || ''}
-              onChange={(e) => setForm({ ...form, supplier_invoice: e.target.value })}
-            />
+            <label className="form-label">Nhà cung cấp</label>
+            <input className="form-input" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Tên nhà cung cấp" />
           </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">Số lượng *</label>
-            <input
-              className="form-input"
-              type="number"
-              value={form.quantity || ''}
-              onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Đơn giá (VNĐ)</label>
-            <input
-              className="form-input"
-              type="number"
-              value={form.unit_price || ''}
-              onChange={(e) => setForm({ ...form, unit_price: Number(e.target.value) })}
-            />
-          </div>
-        </div>
-        {form.quantity > 0 && form.unit_price > 0 && (
-          <div className="p-3 rounded-lg bg-green-50 border border-green-100 text-sm">
-            <strong>Thành tiền:</strong>{' '}
-            <span className="text-green-700 font-bold">
-              {formatCurrency(form.quantity * form.unit_price)}
-            </span>
-          </div>
-        )}
-        <div className="form-group mt-4">
-          <label className="form-label">Nhà cung cấp</label>
-          <input
-            className="form-input"
-            value={form.supplier_name || ''}
-            onChange={(e) => setForm({ ...form, supplier_name: e.target.value })}
-            placeholder="Tên nhà cung cấp"
-          />
         </div>
         <div className="form-group">
+          <label className="form-label">Số HĐ nhà cung cấp</label>
+          <input className="form-input" value={supplierInvoice} onChange={(e) => setSupplierInvoice(e.target.value)} placeholder="VD: NCC-2026-001" />
+        </div>
+
+        <hr className="my-4" />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <label className="form-label mb-0 font-semibold">Danh sách hàng hóa nhập</label>
+            <button type="button" onClick={addItem} className="btn btn-ghost btn-sm text-blue-600">
+              <PlusCircle className="w-4 h-4 mr-1" /> Thêm mặt hàng
+            </button>
+          </div>
+
+          <div className="grid gap-2 text-xs text-gray-400 font-medium px-1" style={{ gridTemplateColumns: '2fr 1fr 1.2fr auto' }}>
+            <span>Hàng hóa</span><span>Số lượng</span><span>Đơn giá</span><span></span>
+          </div>
+
+          {items.map((item, idx) => {
+            const product = products.find(p => p.id === item.product_id);
+            return (
+              <div key={idx} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <div className="grid gap-2 items-start" style={{ gridTemplateColumns: '2fr 1fr 1.2fr auto' }}>
+                  <select className="form-select" value={item.product_id} onChange={(e) => updateItem(idx, 'product_id', e.target.value)}>
+                    <option value="">-- Chọn hàng hóa --</option>
+                    {products.map(p => <option key={p.id} value={p.id}>{p.code} - {p.name}</option>)}
+                  </select>
+                  <input className="form-input text-right" type="number" min="1" placeholder="SL" value={item.quantity || ''} onChange={(e) => updateItem(idx, 'quantity', e.target.value)} />
+                  <input className="form-input text-right" type="number" min="0" placeholder="Đơn giá" value={item.unit_price || ''} onChange={(e) => updateItem(idx, 'unit_price', e.target.value)} />
+                  <button type="button" onClick={() => removeItem(idx)} className="btn btn-ghost btn-sm text-red-400 mt-1" disabled={items.length === 1}>
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                {product && item.quantity > 0 && (
+                  <div className="mt-2 flex justify-between text-xs text-gray-500 px-1">
+                    <span>ĐVT: {product.unit}</span>
+                    <span className="font-medium text-red-600">= {formatCurrency(item.quantity * item.unit_price)}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="form-group mt-4">
           <label className="form-label">Ghi chú</label>
-          <textarea
-            className="form-textarea"
-            value={form.notes || ''}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          />
+          <textarea className="form-textarea" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú (không bắt buộc)" rows={2} />
         </div>
       </Modal>
     </>

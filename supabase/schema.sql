@@ -214,6 +214,62 @@ CREATE TRIGGER tr_invoices_updated
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- =============================================
+-- AUTO-CREATE USER ROW ON SUPABASE AUTH SIGNUP
+-- Bắt buộc: khi user đăng ký Auth → tự tạo row trong public.users
+-- =============================================
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1))
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER tr_on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- =============================================
+-- INVENTORY CORRECTION ON DELETE
+-- Khi xóa purchase → trừ lại tồn kho
+-- Khi xóa sale → cộng lại tồn kho
+-- =============================================
+CREATE OR REPLACE FUNCTION revert_inventory_on_purchase_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE public.inventory
+  SET quantity = quantity - OLD.quantity, last_updated = NOW()
+  WHERE user_id = OLD.user_id AND product_id = OLD.product_id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION revert_inventory_on_sale_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE public.inventory
+  SET quantity = quantity + OLD.quantity, last_updated = NOW()
+  WHERE user_id = OLD.user_id AND product_id = OLD.product_id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER tr_purchase_delete_inventory
+  AFTER DELETE ON public.purchases
+  FOR EACH ROW EXECUTE FUNCTION revert_inventory_on_purchase_delete();
+
+CREATE TRIGGER tr_sale_delete_inventory
+  AFTER DELETE ON public.sales
+  FOR EACH ROW EXECUTE FUNCTION revert_inventory_on_sale_delete();
+
+
+-- =============================================
 -- ROW LEVEL SECURITY (RLS)
 -- =============================================
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;

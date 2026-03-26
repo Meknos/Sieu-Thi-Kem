@@ -2,27 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
-import { Search, Warehouse, AlertTriangle } from 'lucide-react';
+import { Search, Warehouse, AlertTriangle, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
+import { confirm } from '@/components/ConfirmDialog';
 import type { Inventory, Product } from '@/lib/types';
-
-const demoInventory: (Inventory & { product?: Product })[] = [
-  { id: '1', user_id: '', product_id: '1', quantity: 50, last_updated: '2026-03-25T10:00:00', product: { id: '1', user_id: '', code: 'XM001', name: 'Xi măng PCB40 Hà Tiên', unit: 'bao', purchase_price: 85000, selling_price: 95000, is_active: true, created_at: '', updated_at: '' } },
-  { id: '2', user_id: '', product_id: '2', quantity: 300, last_updated: '2026-03-25T10:00:00', product: { id: '2', user_id: '', code: 'TH001', name: 'Thép cuộn phi 10 Hòa Phát', unit: 'kg', purchase_price: 14500, selling_price: 16000, is_active: true, created_at: '', updated_at: '' } },
-  { id: '3', user_id: '', product_id: '3', quantity: 8, last_updated: '2026-03-25T10:00:00', product: { id: '3', user_id: '', code: 'GO001', name: 'Gạch ống 4 lỗ', unit: 'viên', purchase_price: 800, selling_price: 1100, is_active: true, created_at: '', updated_at: '' } },
-  { id: '4', user_id: '', product_id: '4', quantity: 25, last_updated: '2026-03-25T10:00:00', product: { id: '4', user_id: '', code: 'SN001', name: 'Sơn nước Dulux 5L', unit: 'thùng', purchase_price: 320000, selling_price: 380000, is_active: true, created_at: '', updated_at: '' } },
-  { id: '5', user_id: '', product_id: '5', quantity: 0, last_updated: '2026-03-25T10:00:00', product: { id: '5', user_id: '', code: 'TL001', name: 'Tôn lợp 5 sóng', unit: 'mét', purchase_price: 72000, selling_price: 85000, is_active: true, created_at: '', updated_at: '' } },
-];
+import toast from 'react-hot-toast';
 
 export default function InventoryPage() {
-  const [inventory, setInventory] = useState<(Inventory & { product?: Product })[]>(demoInventory);
+  const [inventory, setInventory] = useState<(Inventory & { product?: Product })[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'low' | 'out'>('all');
 
-  useEffect(() => {
-    loadInventory();
-  }, []);
+  useEffect(() => { loadInventory(); }, []);
 
   async function loadInventory() {
     try {
@@ -30,9 +22,30 @@ export default function InventoryPage() {
         .from('inventory')
         .select('*, product:products(*)')
         .order('quantity', { ascending: true });
+      if (data) setInventory(data);
+    } catch { /* Supabase not connected */ }
+  }
 
-      if (data && data.length > 0) setInventory(data);
-    } catch { console.log('Using demo data'); }
+  async function handleDelete(item: Inventory & { product?: Product }) {
+    const name = item.product?.name || 'sản phẩm này';
+    if (!await confirm({
+      title: 'Xóa khỏi tồn kho',
+      message: `Xóa "${name}" (tồn kho: ${item.quantity}) khỏi danh sách hàng hóa?\n\nHành động này sẽ ẩn sản phẩm khỏi toàn bộ hệ thống.`,
+      confirmText: 'Xóa',
+      danger: true,
+    })) return;
+
+    try {
+      const res = await fetch(`/api/products/${item.product_id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Lỗi xóa sản phẩm');
+      }
+      toast.success(`Đã xóa "${name}" khỏi hệ thống`);
+      setInventory(prev => prev.filter(i => i.id !== item.id));
+    } catch (err: any) {
+      toast.error(err.message || 'Không thể xóa sản phẩm');
+    }
   }
 
   const filtered = inventory.filter((item) => {
@@ -61,7 +74,7 @@ export default function InventoryPage() {
       <Header
         title="Tồn kho"
         subtitle="Theo dõi số lượng tồn kho tự động"
-        onMenuClick={() => {}}
+        onMenuClick={() => { }}
       />
 
       <div className="page-content">
@@ -129,12 +142,13 @@ export default function InventoryPage() {
                   <th className="text-right">Giá vốn</th>
                   <th className="text-right">Giá trị tồn</th>
                   <th className="text-center">Trạng thái</th>
+                  <th className="text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="empty-state">
                         <Warehouse className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <h3>Không có dữ liệu tồn kho</h3>
@@ -142,15 +156,29 @@ export default function InventoryPage() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((item) => (
+                  filtered.map((item, idx) => (
                     <tr key={item.id}>
-                      <td className="font-mono font-medium text-blue-600">{item.product?.code}</td>
+                      <td className="text-center text-gray-400 text-sm font-mono">{idx + 1}</td>
                       <td className="font-medium">{item.product?.name}</td>
                       <td>{item.product?.unit}</td>
-                      <td className="text-right font-mono font-bold">{item.quantity}</td>
+                      <td className={`text-right font-mono font-bold ${item.quantity <= 0 ? 'text-red-500' : ''}`}>
+                        {item.quantity}
+                      </td>
                       <td className="text-right font-mono">{formatCurrency(item.product?.purchase_price || 0)}</td>
                       <td className="text-right font-mono">{formatCurrency(item.quantity * (item.product?.purchase_price || 0))}</td>
                       <td className="text-center">{getStockBadge(item.quantity)}</td>
+                      <td className="text-center">
+                        {/* Chỉ cho xóa khi hết hàng */}
+                        {item.quantity <= 0 && (
+                          <button
+                            onClick={() => handleDelete(item)}
+                            className="btn btn-ghost btn-sm text-red-500"
+                            title="Xóa sản phẩm hết hàng"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -158,6 +186,12 @@ export default function InventoryPage() {
             </table>
           </div>
         </div>
+
+        {outOfStockCount > 0 && (
+          <p className="text-xs text-gray-400 mt-2">
+            💡 Chỉ có thể xóa sản phẩm có tồn kho = 0. Xóa sẽ ẩn sản phẩm khỏi toàn bộ hệ thống.
+          </p>
+        )}
       </div>
     </>
   );
