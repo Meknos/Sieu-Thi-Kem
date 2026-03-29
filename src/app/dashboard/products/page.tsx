@@ -19,6 +19,7 @@ const emptyProduct: ProductInput = {
   unit: 'cái',
   purchase_price: 0,
   selling_price: 0,
+  box_quantity: undefined,
   description: '',
 };
 
@@ -36,14 +37,24 @@ export default function ProductsPage() {
   async function loadAll() {
     try {
       const [{ data: prods }, { data: invData }] = await Promise.all([
-        supabase.from('products').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+        // Tải TẤT CẢ products (kể cả is_active=false) — sẽ lọc phía client
+        supabase.from('products').select('*').order('created_at', { ascending: false }),
         supabase.from('inventory').select('product_id, quantity'),
       ]);
-      if (prods) setProducts(prods);
+
       if (invData) {
         const map: Record<string, number> = {};
         invData.forEach(i => { map[i.product_id] = Number(i.quantity); });
         setInventory(map);
+
+        // Chỉ hiển sản phẩm nếu: is_active=true HOẶC còn tồn kho > 0
+        // Đảm bảo sản phẩm còn hàng luôn xuất hiện dù đã soft-delete
+        if (prods) {
+          setProducts(prods.filter(p => p.is_active || (map[p.id] ?? 0) > 0));
+        }
+      } else {
+        // Không có inventory data — fallback: chỉ hiển is_active
+        if (prods) setProducts(prods.filter(p => p.is_active));
       }
     } catch { /* Supabase not connected */ }
   }
@@ -69,6 +80,7 @@ export default function ProductsPage() {
       unit: product.unit,
       purchase_price: product.purchase_price,
       selling_price: product.selling_price,
+      box_quantity: product.box_quantity ?? undefined,
       description: product.description || '',
     });
     setShowModal(true);
@@ -182,6 +194,7 @@ export default function ProductsPage() {
                   <th>Mã HH</th>
                   <th>Tên hàng hóa</th>
                   <th>ĐVT</th>
+                  <th className="text-center">SL/Thùng</th>
                   <th className="text-right">Giá mua</th>
                   <th className="text-right">Giá bán</th>
                   <th className="text-right">Lợi nhuận</th>
@@ -207,6 +220,12 @@ export default function ProductsPage() {
                       <td className="font-mono font-medium text-blue-600">{product.code}</td>
                       <td className="font-medium">{product.name}</td>
                       <td>{product.unit}</td>
+                      <td className="text-center">
+                        {product.box_quantity
+                          ? <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-2 py-0.5 font-mono">1 thùng = {product.box_quantity} {product.unit}</span>
+                          : <span className="text-gray-300 text-xs">—</span>
+                        }
+                      </td>
                       <td className="text-right font-mono">{formatCurrency(product.purchase_price)}</td>
                       <td className="text-right font-mono">{formatCurrency(product.selling_price)}</td>
                       <td className="text-right font-mono text-green-600">
@@ -283,15 +302,9 @@ export default function ProductsPage() {
               onChange={(e) => setForm({ ...form, unit: e.target.value })}
             >
               <option value="cái">Cái</option>
-              <option value="chiếc">Chiếc</option>
-              <option value="bao">Bao</option>
-              <option value="kg">Kg</option>
-              <option value="mét">Mét</option>
-              <option value="viên">Viên</option>
               <option value="thùng">Thùng</option>
-              <option value="lít">Lít</option>
-              <option value="bộ">Bộ</option>
-              <option value="tấn">Tấn</option>
+              <option value="hộp">Hộp</option>
+              <option value="túi">Túi</option>
             </select>
           </div>
         </div>
@@ -323,6 +336,22 @@ export default function ProductsPage() {
               onChange={(e) => setForm({ ...form, selling_price: Number(e.target.value) })}
             />
           </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Số {form.unit || 'cái'} trong 1 thùng <span className="text-gray-400 font-normal text-xs">(để trống nếu không dùng thùng)</span></label>
+          <input
+            className="form-input"
+            type="number"
+            min="1"
+            placeholder="VD: 24"
+            value={form.box_quantity ?? ''}
+            onChange={(e) => setForm({ ...form, box_quantity: e.target.value ? Number(e.target.value) : undefined })}
+          />
+          {form.box_quantity && form.box_quantity > 0 && (
+            <p className="text-xs text-blue-600 mt-1">
+              ✓ 1 thùng = {form.box_quantity} {form.unit || 'cái'} — Sẽ cho phép nhập/xuất theo thùng
+            </p>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Mô tả</label>

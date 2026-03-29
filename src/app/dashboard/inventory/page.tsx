@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
-import { Search, Warehouse, AlertTriangle, Trash2 } from 'lucide-react';
+import { Search, Warehouse, AlertTriangle, Trash2, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/utils';
 import { confirm } from '@/components/ConfirmDialog';
@@ -68,6 +68,38 @@ export default function InventoryPage() {
     if (qty <= 0) return <span className="badge badge-danger">Hết hàng</span>;
     if (qty < 10) return <span className="badge badge-warning">Sắp hết</span>;
     return <span className="badge badge-success">Còn hàng</span>;
+  }
+
+  /** Hiển thị tồn kho theo cái và thùng (nếu có box_quantity) */
+  function renderQty(item: Inventory & { product?: Product }) {
+    const qty = item.quantity;
+    const bq = item.product?.box_quantity;
+    const unit = item.product?.unit || 'cái';
+
+    if (!bq || bq <= 0) {
+      return (
+        <span className={`font-mono font-bold ${qty <= 0 ? 'text-red-500' : ''}`}>
+          {qty} <span className="text-gray-400 font-normal text-xs">{unit}</span>
+        </span>
+      );
+    }
+
+    const boxes = Math.floor(qty / bq);
+    const remainder = qty % bq;
+
+    return (
+      <div className={`text-right ${qty <= 0 ? 'text-red-500' : ''}`}>
+        <div className="font-mono font-bold text-sm">
+          {qty} <span className="text-gray-400 font-normal text-xs">{unit}</span>
+        </div>
+        <div className="flex items-center justify-end gap-1 text-xs text-blue-600 mt-0.5">
+          <Package className="w-3 h-3" />
+          <span className="font-medium">
+            {boxes} thùng{remainder > 0 ? ` + ${remainder} ${unit}` : ''}
+          </span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -139,6 +171,7 @@ export default function InventoryPage() {
                   <th>Mã HH</th>
                   <th>Tên hàng hóa</th>
                   <th>ĐVT</th>
+                  <th className="text-center">Quy đổi thùng</th>
                   <th className="text-right">Tồn kho</th>
                   <th className="text-right">Giá vốn</th>
                   <th className="text-right">Giá trị tồn</th>
@@ -149,7 +182,7 @@ export default function InventoryPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state">
                         <Warehouse className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <h3>Không có dữ liệu tồn kho</h3>
@@ -162,14 +195,22 @@ export default function InventoryPage() {
                       <td className="text-center text-gray-400 text-sm font-mono">{idx + 1}</td>
                       <td className="font-medium">{item.product?.name}</td>
                       <td>{item.product?.unit}</td>
-                      <td className={`text-right font-mono font-bold ${item.quantity <= 0 ? 'text-red-500' : ''}`}>
-                        {item.quantity}
+                      <td className="text-center">
+                        {item.product?.box_quantity ? (
+                          <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-2 py-0.5 font-mono">
+                            1 thùng = {item.product.box_quantity} {item.product.unit}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="text-right">
+                        {renderQty(item)}
                       </td>
                       <td className="text-right font-mono">{formatCurrency(item.product?.purchase_price || 0)}</td>
                       <td className="text-right font-mono">{formatCurrency(item.quantity * (item.product?.purchase_price || 0))}</td>
                       <td className="text-center">{getStockBadge(item.quantity)}</td>
                       <td className="text-center">
-                        {/* Chỉ cho xóa khi hết hàng */}
                         {item.quantity <= 0 && (
                           <button
                             onClick={() => handleDelete(item)}

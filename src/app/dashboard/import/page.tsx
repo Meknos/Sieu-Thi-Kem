@@ -5,7 +5,7 @@ import { useState, useRef } from 'react';
 import Header from '@/components/Header';
 import {
   Upload, FileSpreadsheet, Check, AlertCircle, Trash2,
-  Plus, Download, FileText, Loader2, Eye, ChevronRight,
+  Plus, Download, FileText, Loader2, Eye, ChevronRight, Gift, Code2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { apiFetch } from '@/lib/apiFetch';
@@ -43,9 +43,11 @@ export default function ImportPage() {
   const [importResult, setImportResult] = useState<{ success: number; failed: number; newProducts: number }>({ success: 0, failed: 0, newProducts: 0 });
   const [pdfPreviewText, setPdfPreviewText] = useState('');
   const [showPdfPreview, setShowPdfPreview] = useState(false);
-  const [activeTab, setActiveTab] = useState<'csv' | 'pdf'>('pdf');
+  const [activeTab, setActiveTab] = useState<'xml' | 'pdf' | 'csv'>('xml');
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+  const xmlInputRef = useRef<HTMLInputElement>(null);
 
   async function loadProducts() {
     try {
@@ -54,18 +56,72 @@ export default function ImportPage() {
     } catch { /* ignore */ }
   }
 
+  /** Chuẩn hóa chuỗi: lowercase, bỏ dấu tiếng Việt, chỉ giữ chữ cái và số */
+  function normalizeName(s: string): string {
+    return s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')   // bỏ dấu
+      .replace(/đ/g, 'd')
+      .replace(/[^a-z0-9\s]/g, '')       // bỏ ký tự đặc biệt
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /** Tính tỉ lệ từ chung giữa 2 chuỗi đã normalize */
+  function wordOverlap(a: string, b: string): number {
+    const wa = new Set(a.split(' ').filter(w => w.length > 1));
+    const wb = new Set(b.split(' ').filter(w => w.length > 1));
+    if (wa.size === 0 || wb.size === 0) return 0;
+    let common = 0;
+    wa.forEach(w => { if (wb.has(w)) common++; });
+    return common / Math.max(wa.size, wb.size);
+  }
+
+  /** Tìm sản phẩm khớp best: exact → normalized → fuzzy word overlap ≥ 0.65 */
+  function findBestMatch(row: ImportRow, productList: Product[]): Product | undefined {
+    const rowCode = row.product_code.toLowerCase().trim();
+    const rowName = row.product_name.toLowerCase().trim();
+    const rowNorm = normalizeName(row.product_name);
+
+    // 1) Exact: code hoặc tên
+    for (const p of productList) {
+      if (rowCode && p.code.toLowerCase().trim() === rowCode) return p;
+      if (p.name.toLowerCase().trim() === rowName) return p;
+    }
+
+    // 2) Normalized exact (bỏ dấu, ký tự đặc biệt)
+    for (const p of productList) {
+      if (normalizeName(p.name) === rowNorm) return p;
+    }
+
+    // 3) Substring: một cái chứa cái kia (sau normalize)
+    for (const p of productList) {
+      const pNorm = normalizeName(p.name);
+      if (rowNorm.includes(pNorm) || pNorm.includes(rowNorm)) return p;
+    }
+
+    // 4) Fuzzy word overlap ≥ 65%
+    let best: Product | undefined;
+    let bestScore = 0.64;
+    for (const p of productList) {
+      const score = wordOverlap(rowNorm, normalizeName(p.name));
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    return best;
+  }
+
   function matchProducts(parsedRows: ImportRow[], productList: Product[]): ImportRow[] {
     return parsedRows.map(row => {
-      const matched = productList.find(
-        p => p.code.toLowerCase() === row.product_code.toLowerCase() ||
-          p.name.toLowerCase() === row.product_name.toLowerCase()
-      );
+      const matched = findBestMatch(row, productList);
+      // Preserve price=0/total=0 for promotional items — do NOT override with stock price
+      const isPromo = row.unit_price === 0 && row.total === 0 && row.quantity > 0;
       return {
         ...row,
         matched_product: matched,
         unit: matched?.unit || row.unit,
-        unit_price: row.unit_price || matched?.purchase_price || 0,
-        total: row.quantity * (row.unit_price || matched?.purchase_price || 0),
+        unit_price: isPromo ? 0 : (row.unit_price || matched?.purchase_price || 0),
+        total: isPromo ? 0 : row.quantity * (row.unit_price || matched?.purchase_price || 0),
         status: matched ? 'matched' : 'new',
       };
     });
@@ -121,11 +177,63 @@ export default function ImportPage() {
 
   async function loadProductsAndReturn(): Promise<Product[]> {
     try {
-      const { data } = await supabase.from('products').select('*').eq('is_active', true);
+      // Load ALL products (kể cả is_active=false) để matching tốt hơn
+      const { data } = await supabase.from('products').select('*');
       const prods = data || [];
       setProducts(prods);
       return prods;
     } catch { return []; }
+  }
+
+  // ── XML Parse ──────────────────────────────────────────────
+  async function handleXMLUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setParseLoading(true);
+    try {
+      const prods = await loadProductsAndReturn();
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/import/parse-xml', { method: 'POST', body: fd });
+      const result = await res.json();
+      if (!res.ok) { toast.error(result.error || 'Lỗi đọc file XML'); return; }
+
+      if (result.warning || !result.items?.length) {
+        toast.error(result.warning || 'Không nhận diện được mặt hàng');
+        setRows([{ product_code: '', product_name: '', unit: 'cái', quantity: 1, unit_price: 0, total: 0, status: 'new' }]);
+        setStep('review');
+        return;
+      }
+
+      // Tự điền nhà cung cấp từ XML
+      if (result.supplier_name) setSupplierName(result.supplier_name);
+
+      const allParsed: ImportRow[] = (result.items || []).map((item: any) => ({
+        product_code: item.product_code || '',
+        product_name: item.product_name || '',
+        unit: item.unit || 'cái',
+        quantity: item.quantity || 1,
+        unit_price: item.unit_price || 0,
+        total: item.total || 0,
+        confidence: item.confidence,
+        status: 'pending' as const,
+      }));
+
+      // Lọc chỉ mặt hàng bắt đầu bằng "kem"
+      const parsed = allParsed.filter(r => r.product_name.toLowerCase().trimStart().startsWith('kem'));
+      const skipped = allParsed.length - parsed.length;
+      const toImport = parsed.length > 0 ? parsed : allParsed;
+      const matched = matchProducts(toImport, prods);
+      setRows(matched);
+      setStep('review');
+      const matchCount = matched.filter(r => r.status === 'matched').length;
+      const skipMsg = skipped > 0 ? ` (bỏ qua ${skipped} dòng không phải "kem")` : '';
+      toast.success(`✅ XML: ${matched.length} mặt hàng — ${matchCount} khớp, ${matched.length - matchCount} mới${skipMsg}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi xử lý XML');
+    } finally {
+      setParseLoading(false);
+    }
   }
 
   // ── PDF Parse ──────────────────────────────────────────────
@@ -257,9 +365,20 @@ export default function ImportPage() {
     setSupplierName(''); setSupplierInvoice(''); setPdfPreviewText(''); setShowPdfPreview(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (pdfInputRef.current) pdfInputRef.current.value = '';
+    if (xmlInputRef.current) xmlInputRef.current.value = '';
   }
 
   const totalAmount = rows.reduce((sum, r) => sum + r.total, 0);
+  // Nếu giá đã bao gồm VAT: tổng = totalAmount, rút giả thuế ra
+  // Nếu giá chưa có VAT: tổng = totalAmount + 8%
+  const vatRate = 0.08;
+  const totalBeforeVat = pricesIncludeVat
+    ? Math.round(totalAmount / (1 + vatRate))
+    : totalAmount;
+  const vatAmount = pricesIncludeVat
+    ? totalAmount - totalBeforeVat
+    : Math.round(totalAmount * vatRate);
+  const totalWithVat = pricesIncludeVat ? totalAmount : totalAmount + vatAmount;
   const confidenceBadge = (conf?: string) => {
     if (!conf) return null;
     const cls = conf === 'high' ? 'text-green-600' : conf === 'medium' ? 'text-yellow-600' : 'text-red-500';
@@ -281,19 +400,72 @@ export default function ImportPage() {
           <div className="max-w-2xl mx-auto">
             {/* Tabs */}
             <div className="flex border-b mb-6">
-              {(['pdf', 'csv'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                  {tab === 'pdf' ? '📄 PDF Hóa đơn (OCR)' : '📊 File CSV/Excel'}
-                </button>
-              ))}
+              <button
+                onClick={() => setActiveTab('xml')}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                  activeTab === 'xml' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Code2 className="w-4 h-4" /> XML (chuẩn xác)
+                <span className="ml-1 px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-semibold">Mới</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('pdf')}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'pdf' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                📄 PDF (OCR)
+              </button>
+              <button
+                onClick={() => setActiveTab('csv')}
+                className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'csv' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                📊 CSV/Excel
+              </button>
             </div>
+
+            {/* XML Tab */}
+            {activeTab === 'xml' && (
+              <>
+                <div
+                  className={`card p-12 text-center cursor-pointer border-2 border-dashed transition-all ${
+                    parseLoading ? 'border-green-300 bg-green-50/30' : 'border-gray-200 hover:border-green-400'
+                  }`}
+                  onClick={() => !parseLoading && xmlInputRef.current?.click()}
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-4">
+                    {parseLoading
+                      ? <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+                      : <Code2 className="w-8 h-8 text-green-600" />}
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {parseLoading ? 'Đang phân tích file XML...' : 'Tải lên hóa đơn XML'}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Hóa đơn điện tử (.xml) — dữ liệu cấu trúc, chính xác 100%<br />
+                    <span className="text-xs text-green-600 font-medium">✅ Không cần OCR — đọc trực tiếp tên, mã, số lượng, đơn giá</span>
+                  </p>
+                  <input ref={xmlInputRef} type="file" accept=".xml" onChange={handleXMLUpload} className="hidden" />
+                  <button className="btn btn-success" disabled={parseLoading}>
+                    <Code2 className="w-4 h-4" /> {parseLoading ? 'Đang xử lý...' : 'Chọn file XML'}
+                  </button>
+                </div>
+                <div className="card mt-6 p-6 border-green-100 bg-green-50/30">
+                  <h3 className="font-semibold mb-3 text-green-800">✨ Tại sao dùng XML?</h3>
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p>✅ <strong>Chính xác tuyệt đối</strong> — dữ liệu cấu trúc từ hệ thống hóa đơn điện tử (MISA, VNPT, Viettel...)</p>
+                    <p>✅ <strong>Tự điền nhà cung cấp</strong> — tên công ty và mã số thuế tự động được trích xuất</p>
+                    <p>❌ PDF/CSV: có thể sai tên hàng, số lượng, đơn giá do OCR hoặc format khác nhau</p>
+                    <p className="text-xs text-gray-400 bg-gray-100 p-2 rounded font-mono">
+                      Lấy file XML: mở hóa đơn điện tử → Tải xuống / Xuất XML
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* PDF Tab */}
             {activeTab === 'pdf' && (
@@ -421,6 +593,32 @@ export default function ImportPage() {
                     <input className="form-input" value={supplierInvoice} onChange={(e) => setSupplierInvoice(e.target.value)} placeholder="VD: HD-2026-001" />
                   </div>
                 </div>
+                {/* Toggle VAT */}
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={pricesIncludeVat}
+                        onChange={(e) => setPricesIncludeVat(e.target.checked)}
+                      />
+                      <div className={`w-10 h-6 rounded-full transition-colors ${pricesIncludeVat ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${pricesIncludeVat ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-700">
+                        Đơn giá trong hóa đơn đã bao gồm thuế GTGT (8%)
+                      </span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {pricesIncludeVat
+                          ? 'Tổng tiền = giá đã có thuế — sẽ rút tiền thuế ra từ giá nhập'
+                          : 'Tổng tiền = giá chưa có thuế + 8% VAT'}
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -428,9 +626,9 @@ export default function ImportPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
               {[
                 { label: 'Tổng mặt hàng', value: rows.length, color: 'blue' },
-                { label: 'Đã khớp kho', value: rows.filter(r => r.status === 'matched').length, color: 'green' },
+                { label: 'Khừn mại (0đ)', value: rows.filter(r => r.unit_price === 0 && r.quantity > 0).length, color: 'green' },
                 { label: 'Sản phẩm mới', value: rows.filter(r => r.status === 'new').length, color: 'orange' },
-                { label: 'Tổng giá trị', value: formatCurrency(totalAmount), color: 'purple', isText: true },
+                { label: 'Cộng tiền thanh toán', value: formatCurrency(totalWithVat), color: 'purple', isText: true },
               ].map(({ label, value, color, isText }) => (
                 <div key={label} className={`p-3 rounded-lg bg-${color}-50 border border-${color}-100 text-center`}>
                   <div className={`text-xs text-${color}-600`}>{label}</div>
@@ -493,11 +691,13 @@ export default function ImportPage() {
                         </td>
                         <td className="text-right font-mono font-medium">{formatCurrency(row.total)}</td>
                         <td className="text-center">
-                          {row.status === 'matched'
-                            ? <span className="badge badge-success"><Check className="w-3 h-3 mr-1" />Đã khớp</span>
-                            : row.status === 'new'
-                              ? <span className="badge badge-warning"><Plus className="w-3 h-3 mr-1" />Mới</span>
-                              : <span className="badge badge-danger"><AlertCircle className="w-3 h-3 mr-1" />Lỗi</span>}
+                          {row.unit_price === 0 && row.quantity > 0
+                            ? <span className="badge" style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}><Gift className="w-3 h-3 mr-1" />Khuyến mại</span>
+                            : row.status === 'matched'
+                              ? <span className="badge badge-success"><Check className="w-3 h-3 mr-1" />Đã khớp</span>
+                              : row.status === 'new'
+                                ? <span className="badge badge-warning"><Plus className="w-3 h-3 mr-1" />Mới</span>
+                                : <span className="badge badge-danger"><AlertCircle className="w-3 h-3 mr-1" />Lỗi</span>}
                         </td>
                         <td>
                           <button onClick={() => handleRemoveRow(idx)} className="btn btn-ghost btn-sm text-red-400">
@@ -508,9 +708,23 @@ export default function ImportPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="font-bold bg-gray-50">
-                      <td colSpan={6} className="text-right">Tổng cộng:</td>
-                      <td className="text-right font-mono text-lg text-green-700">{formatCurrency(totalAmount)}</td>
+                    <tr className="bg-gray-50">
+                      <td colSpan={6} className="text-right text-sm text-gray-600">
+                        Thành tiền trước thuế GTGT:
+                      </td>
+                      <td className="text-right font-mono text-sm text-gray-700">{formatCurrency(totalBeforeVat)}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                    <tr className="bg-gray-50">
+                      <td colSpan={6} className="text-right text-sm text-gray-600">
+                        Thuế GTGT 8%{pricesIncludeVat ? ' (rút ra từ giá)' : ' (cộng thêm)'}:
+                      </td>
+                      <td className="text-right font-mono text-sm text-orange-600">{formatCurrency(vatAmount)}</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                    <tr className="font-bold bg-gray-50 border-t-2 border-gray-300">
+                      <td colSpan={6} className="text-right">Cộng tiền thanh toán:</td>
+                      <td className="text-right font-mono text-lg text-green-700">{formatCurrency(totalWithVat)}</td>
                       <td colSpan={2}></td>
                     </tr>
                   </tfoot>

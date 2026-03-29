@@ -36,6 +36,7 @@ export interface Product {
   unit: string;
   purchase_price: number;
   selling_price: number;
+  box_quantity?: number;   // số cái trong 1 thùng (null = không dùng chuyển đổi)
   category?: string;
   description?: string;
   is_active: boolean;
@@ -124,6 +125,7 @@ export interface ProductInput {
   unit: string;
   purchase_price: number;
   selling_price: number;
+  box_quantity?: number;   // số cái trong 1 thùng
   category?: string;
   description?: string;
 }

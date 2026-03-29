@@ -4,13 +4,106 @@ import { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
 
-// Dynamic import — works for both CJS and ESM versions of pdf-parse
-// Using dynamic import prevents Vercel from bundling it (respects serverExternalPackages)
+// Dynamic import — pdf-parse v1 bundles pdfjs 2.x (Node.js compatible)
 async function parsePDF(buffer: Buffer): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mod: any = await import('pdf-parse');
-  const pdfParse = (mod.default || mod) as (buf: Buffer, opts?: object) => Promise<{ text: string }>;
-  const result = await pdfParse(buffer, { max: 0 });
+  const pdfParse = (mod.default || mod) as (
+    buf: Buffer,
+    opts?: object
+  ) => Promise<{ text: string }>;
+
+  // Custom pagerender: sort text items by y DESC then x ASC
+  // This fixes column-ordered PDFs (MISA meInvoice) where text is stored
+  // column-by-column instead of row-by-row
+  const pagerender = async (pageData: any) => {
+    const content = await pageData.getTextContent({ normalizeWhitespace: false });
+
+    const items: { str: string; x: number; y: number }[] = content.items
+      .filter((t: any) => t.str.trim().length > 0)
+      .map((t: any) => ({ str: t.str.trim(), x: t.transform[4], y: t.transform[5] }));
+
+    if (items.length === 0) return '';
+
+    // --- Try STT-proximity grouping ----------------------------
+    // Find standalone STT numbers (1-99) in the leftmost column (x < 60)
+    const sttItems = items
+      .filter(t => /^\d{1,2}$/.test(t.str) && +t.str >= 1 && +t.str <= 99 && t.x < 60)
+      .sort((a, b) => b.y - a.y); // top → bottom
+
+    if (sttItems.length >= 2) {
+      // Build groups keyed by STT number
+      const groups = new Map<number, { y: number; items: typeof items }>();
+      for (const s of sttItems) groups.set(+s.str, { y: s.y, items: [] });
+      const sttYs = sttItems.map(s => s.y);
+
+      // Assign each text item to nearest STT row by y-distance.
+      // Skip items that are table column-header or summary labels — they must never
+      // contaminate the last product row even when their y is close (< threshold).
+      // Filter out column-header / footer text items BEFORE proximity assignment.
+      // Includes multi-word labels AND single-word header fragments that wrap to a
+      // second line (e.g. "tính" from "Đơn vị tính", "vị" from narrow columns).
+      const isLabelItem = (s: string) => {
+        const t = s.trim();
+        // Standalone header word fragments (single token, not a product-name word)
+        if (/^(t[ií]nh|v[iị]|[dđ][oơ]n\s*v[iị]|gtgt|chú)$/i.test(t)) return true;
+        // Multi-word label patterns
+        return /^(th[aà]nh\s*ti[eề]n|ti[eề]n\s*thu[eế]|t[oổ]ng\s*h[oợ]p|c[oộ]ng\s*ti[eề]n)/i.test(t);
+      };
+
+      for (const item of items) {
+        if (isLabelItem(item.str)) continue; // skip footer/header labels
+        let nearestIdx = 0, minDist = Infinity;
+        for (let i = 0; i < sttYs.length; i++) {
+          const d = Math.abs(item.y - sttYs[i]);
+          if (d < minDist) { minDist = d; nearestIdx = i; }
+        }
+        // 25 PDF units: captures multi-line cell continuations (~12-15 units gap)
+        // without pulling in the summary footer row that sits ~20+ units below last item
+        if (minDist < 25) {
+          groups.get(+sttItems[nearestIdx].str)!.items.push(item);
+        }
+      }
+
+      // Reconstruct rows: sort each group's items so the STT number always leads,
+      // then remaining items by y desc, x asc.
+      // WHY: In some MISA meInvoice PDFs the product-name text item starts at a lower
+      // x than the STT cell, so a plain x-asc sort puts the name before the number.
+      // Forcing the STT item first makes isSttLine() in parseInvoiceText() recognise it.
+      let text = '';
+      for (const [sttNum, grp] of [...groups.entries()].sort((a, b) => b[1].y - a[1].y)) {
+        grp.items.sort((a, b) => {
+          const aIsStt = a.str === String(sttNum); // exact STT string
+          const bIsStt = b.str === String(sttNum);
+          if (aIsStt && !bIsStt) return -1;
+          if (!aIsStt && bIsStt) return 1;
+          return Math.abs(a.y - b.y) > 1 ? b.y - a.y : a.x - b.x;
+        });
+        // Merge items into lines within the group
+        let rowText = '', lastY: number | null = null;
+        for (const item of grp.items) {
+          if (lastY === null) { lastY = item.y; }
+          else if (Math.abs(item.y - lastY) > 1) { rowText += ' '; lastY = item.y; }
+          else { rowText += ' '; }
+          rowText += item.str;
+        }
+        if (rowText.trim()) text += rowText.trim() + '\n';
+      }
+      return text;
+    }
+
+    // --- Fallback: sort by y desc, x asc with tolerance 1 ---
+    items.sort((a, b) => Math.abs(a.y - b.y) > 1 ? b.y - a.y : a.x - b.x);
+    let text = '', lastY: number | null = null;
+    for (const item of items) {
+      if (lastY === null) { lastY = item.y; }
+      else if (Math.abs(item.y - lastY) > 1) { text += '\n'; lastY = item.y; }
+      else { text += ' '; }
+      text += item.str;
+    }
+    return text + '\n';
+  };
+
+  const result = await pdfParse(buffer, { pagerender, max: 0 });
   return result.text || '';
 }
 
@@ -144,12 +237,16 @@ function parseInvoiceText(text: string): ParsedItem[] {
   // NOT to any product row.
   const isSkipLine = (line: string): boolean => {
     if (line.length === 0) return true;
-    return /^(stt|tt|#|mã hh|tên hàng|diễn giải|đơn vị|số lượng|đơn giá|thành tiền|thuế suất|tiền thuế|ghi chú)/i.test(line);
+    if (/^(stt|tt|#|mã hh|tên hàng|diễn giải|đơn vị|số lượng|đơn giá|thành tiền|thuế suất|tiền thuế|ghi chú)/i.test(line)) return true;
+    // Summary/separator rows inside the table — skip but DO NOT stop processing (items may follow)
+    if (/^(tổng hợp|cộng trang|thuế suất\s*\d)/i.test(line)) return true;
+    return false;
   };
 
   const isFooterLine = (line: string): boolean => {
     return (
-      /^(tổng cộng|cộng tiền|cộng trang|tổng hợp|số tiền (viết|bằng chữ)|bằng chữ)/i.test(line) ||
+      // Hard stops: grand total row, written amount, signature blocks
+      /^(tổng cộng|cộng tiền|số tiền (viết|bằng chữ)|bằng chữ)/i.test(line) ||
       /^(người mua|người bán|chủ hộ|kế toán|giám đốc|signature|ký bởi|ký ngày|tra cứu)/i.test(line) ||
       /^(phát hành bởi|công ty cổ phần misa|meinvoice|hóa đơn điện tử)/i.test(line) ||
       /https?:\/\//i.test(line) ||        // URL lines
@@ -266,8 +363,9 @@ function parseCombinedRow(line: string, knownStt: number | undefined): ParsedIte
   if (unit) {
     productName = productName.replace(new RegExp(`(?<![\\p{L}])${unit}(?![\\p{L}])`, 'gui'), '').trim();
   }
-  // Remove parenthetical notes (promotional/extra info)
-  productName = productName.replace(/\(.*?\)/g, '').trim();
+  // Remove ONLY clearly promotional parenthetical notes — keep meaningful variants like (OT), (SG), (Q), (Cool)
+  // Covers both spellings: "khuyến mại" and "khuyến mãi"
+  productName = productName.replace(/\((hàng\s*khuy[eê]n\s*m[aã][iy]|km|qu[aà]\s*t[aặ]ng|mi[eễ]n\s*ph[ií]|kh[oô]ng\s*thu\s*ti[eề]n|gift|free)[^)]*\)/gi, '').trim();
   productName = productName.replace(/\s{2,}/g, ' ').trim();
   if (productName.length < 2) return null;
 

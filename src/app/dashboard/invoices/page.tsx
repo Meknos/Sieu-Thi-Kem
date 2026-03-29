@@ -50,7 +50,7 @@ export default function InvoicesPage() {
     customer_tax_code: '',
     payment_method: 'cash' as 'cash' | 'transfer' | 'card',
     notes: '',
-    vat_rate: 8,
+    vat_rate: 0,  // Không tính VAT
   });
   const [orderItems, setOrderItems] = useState<SaleItem[]>([
     { product_id: '', quantity: 1, unit_price: 0, subtotal: 0 },
@@ -84,8 +84,6 @@ export default function InvoicesPage() {
   // Chỉ tính doanh thu từ hóa đơn hoàn thành
   const completedFiltered = filtered.filter(i => i.status === 'completed');
   const totalRevenue = completedFiltered.reduce((s, i) => s + Number(i.total_amount), 0);
-  const totalVAT = completedFiltered.reduce((s, i) => s + Number(i.vat_amount), 0);
-  const totalWithVAT = completedFiltered.reduce((s, i) => s + Number(i.total_amount) + Number(i.vat_amount), 0);
 
   // --- Order Items Helpers ---
   function addItem() {
@@ -113,8 +111,6 @@ export default function InvoicesPage() {
   }
 
   const orderSubtotal = orderItems.reduce((s, i) => s + i.subtotal, 0);
-  const orderVAT = Math.round(orderSubtotal * orderForm.vat_rate / 100);
-  const orderTotal = orderSubtotal + orderVAT;
 
   // --- Create Order ---
   async function handleCreateOrder() {
@@ -153,7 +149,7 @@ export default function InvoicesPage() {
       customer_tax_code: '',
       payment_method: 'cash',
       notes: '',
-      vat_rate: 8,
+      vat_rate: 0,
     });
     setOrderItems([{ product_id: '', quantity: 1, unit_price: 0, subtotal: 0 }]);
   }
@@ -234,24 +230,20 @@ export default function InvoicesPage() {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
           <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
             <div className="text-xs text-blue-600 mb-1">Tổng hóa đơn</div>
             <div className="text-2xl font-bold text-blue-700">{filtered.length}</div>
             <div className="text-xs text-blue-400 mt-1">{completedFiltered.length} hoàn thành</div>
           </div>
           <div className="p-4 rounded-lg bg-green-50 border border-green-100">
-            <div className="text-xs text-green-600 mb-1">Doanh thu (trước thuế)</div>
+            <div className="text-xs text-green-600 mb-1">Doanh thu</div>
             <div className="text-lg font-bold text-green-700">{formatCurrency(totalRevenue)}</div>
             <div className="text-xs text-green-400 mt-1">Chỉ tính HĐ hoàn thành</div>
           </div>
           <div className="p-4 rounded-lg bg-purple-50 border border-purple-100">
-            <div className="text-xs text-purple-600 mb-1">VAT</div>
-            <div className="text-lg font-bold text-purple-700">{formatCurrency(totalVAT)}</div>
-          </div>
-          <div className="p-4 rounded-lg bg-orange-50 border border-orange-100">
-            <div className="text-xs text-orange-600 mb-1">Tổng thu (sau thuế)</div>
-            <div className="text-lg font-bold text-orange-700">{formatCurrency(totalWithVAT)}</div>
+            <div className="text-xs text-purple-600 mb-1">Trung bình / HĐ</div>
+            <div className="text-lg font-bold text-purple-700">{formatCurrency(completedFiltered.length ? totalRevenue / completedFiltered.length : 0)}</div>
           </div>
         </div>
 
@@ -264,8 +256,6 @@ export default function InvoicesPage() {
                   <th>Số HĐ</th>
                   <th>Ngày</th>
                   <th>Khách hàng</th>
-                  <th className="text-right">Tiền hàng</th>
-                  <th className="text-right">VAT</th>
                   <th className="text-right">Tổng tiền</th>
                   <th className="text-center">Thanh toán</th>
                   <th className="text-center">Trạng thái</th>
@@ -275,7 +265,7 @@ export default function InvoicesPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={8}>
                       <div className="empty-state">
                         <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                         <h3>Chưa có hóa đơn</h3>
@@ -300,8 +290,6 @@ export default function InvoicesPage() {
                         <td className="font-mono font-medium text-blue-600">{inv.invoice_number}</td>
                         <td className="font-mono">{formatDate(inv.invoice_date)}</td>
                         <td className="font-medium">{inv.customer_name}</td>
-                        <td className="text-right font-mono">{formatCurrency(inv.subtotal)}</td>
-                        <td className="text-right font-mono text-blue-600">{formatCurrency(inv.vat_amount)}</td>
                         <td className="text-right font-mono font-medium text-green-600">{formatCurrency(inv.total_amount)}</td>
                         <td className="text-center text-sm">{getPaymentMethodLabel(inv.payment_method)}</td>
                         <td className="text-center">
@@ -337,7 +325,7 @@ export default function InvoicesPage() {
                       {/* Expanded row: show items */}
                       {expandedId === inv.id && inv.sales && inv.sales.length > 0 && (
                         <tr key={`${inv.id}-detail`} className="bg-blue-50/50">
-                          <td colSpan={10} className="py-3 px-6">
+                          <td colSpan={8} className="py-3 px-6">
                             <div className="text-xs font-semibold text-blue-700 mb-2">
                               Chi tiết mặt hàng ({inv.sales.length} loại):
                             </div>
@@ -356,7 +344,7 @@ export default function InvoicesPage() {
                                     <td className="py-1 font-medium">{s.product?.name || '—'}</td>
                                     <td className="text-right py-1">{s.quantity} {s.product?.unit}</td>
                                     <td className="text-right py-1 font-mono">{formatCurrency(s.unit_price)}</td>
-                                    <td className="text-right py-1 font-mono font-medium">{formatCurrency(s.total_with_vat)}</td>
+                                    <td className="text-right py-1 font-mono font-medium">{formatCurrency(s.total_amount)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -490,24 +478,9 @@ export default function InvoicesPage() {
 
         {/* Totals */}
         <div className="p-4 rounded-lg bg-gradient-to-r from-green-50 to-blue-50 border border-green-100">
-          <div className="grid grid-cols-4 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500">VAT %:</span>
-              <input type="number" className="form-input text-sm py-1 mt-1" value={orderForm.vat_rate}
-                onChange={(e) => setOrderForm({ ...orderForm, vat_rate: Number(e.target.value) })} />
-            </div>
-            <div>
-              <span className="text-gray-500">Tiền hàng:</span>
-              <div className="font-bold mt-1">{formatCurrency(orderSubtotal)}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">VAT ({orderForm.vat_rate}%):</span>
-              <div className="font-bold text-blue-600 mt-1">{formatCurrency(orderVAT)}</div>
-            </div>
-            <div>
-              <span className="text-gray-500">Tổng thanh toán:</span>
-              <div className="font-bold text-green-600 text-lg mt-1">{formatCurrency(orderTotal)}</div>
-            </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-500 font-medium">Tổng thanh toán:</span>
+            <div className="font-bold text-green-600 text-lg">{formatCurrency(orderSubtotal)}</div>
           </div>
         </div>
 
@@ -548,8 +521,6 @@ export default function InvoicesPage() {
                     <th className="text-right px-3 py-2">SL</th>
                     <th className="text-right px-3 py-2">Đơn giá</th>
                     <th className="text-right px-3 py-2">Thành tiền</th>
-                    <th className="text-right px-3 py-2">VAT</th>
-                    <th className="text-right px-3 py-2">Tổng</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,17 +529,13 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2 font-medium">{s.product?.name || '—'}</td>
                       <td className="px-3 py-2 text-right">{s.quantity} {s.product?.unit}</td>
                       <td className="px-3 py-2 text-right font-mono">{formatCurrency(s.unit_price)}</td>
-                      <td className="px-3 py-2 text-right font-mono">{formatCurrency(s.total_amount)}</td>
-                      <td className="px-3 py-2 text-right font-mono text-blue-600">{formatCurrency(s.vat_amount)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-medium text-green-600">{formatCurrency(s.total_with_vat)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-medium text-green-600">{formatCurrency(s.total_amount)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-50 font-bold border-t-2">
-                    <td colSpan={3} className="px-3 py-2 text-right">Cộng:</td>
-                    <td className="px-3 py-2 text-right font-mono">{formatCurrency(selectedInvoice.subtotal)}</td>
-                    <td className="px-3 py-2 text-right font-mono text-blue-600">{formatCurrency(selectedInvoice.vat_amount)}</td>
+                    <td colSpan={3} className="px-3 py-2 text-right">Tổng cộng:</td>
                     <td className="px-3 py-2 text-right font-mono text-green-600 text-base">{formatCurrency(selectedInvoice.total_amount)}</td>
                   </tr>
                 </tfoot>
