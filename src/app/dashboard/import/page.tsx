@@ -44,7 +44,7 @@ export default function ImportPage() {
   const [pdfPreviewText, setPdfPreviewText] = useState('');
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [activeTab, setActiveTab] = useState<'xml' | 'pdf' | 'csv'>('xml');
-  const [pricesIncludeVat, setPricesIncludeVat] = useState(true);
+  const [pricesIncludeVat, setPricesIncludeVat] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const xmlInputRef = useRef<HTMLInputElement>(null);
@@ -609,12 +609,12 @@ export default function ImportPage() {
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-700">
-                        Đơn giá trong hóa đơn đã bao gồm thuế GTGT (8%)
+                        Giá trong hóa đơn đã bao gồm thuế GTGT (8%)
                       </span>
                       <p className="text-xs text-gray-400 mt-0.5">
                         {pricesIncludeVat
-                          ? 'Tổng tiền = giá đã có thuế — sẽ rút tiền thuế ra từ giá nhập'
-                          : 'Tổng tiền = giá chưa có thuế + 8% VAT'}
+                          ? 'Giá đã gộp VAT — hệ thống sẽ tách thuế ra từ tổng'
+                          : 'Giá chưa có VAT — thuế 8% sẽ được cộng thêm vào tiền hàng'}
                       </p>
                     </div>
                   </label>
@@ -717,7 +717,7 @@ export default function ImportPage() {
                     </tr>
                     <tr className="bg-gray-50">
                       <td colSpan={6} className="text-right text-sm text-gray-600">
-                        Thuế GTGT 8%{pricesIncludeVat ? ' (rút ra từ giá)' : ' (cộng thêm)'}:
+                        Thuế GTGT 8%{pricesIncludeVat ? ' (tách từ giá)' : ' (cộng thêm)'}:
                       </td>
                       <td className="text-right font-mono text-sm text-orange-600">{formatCurrency(vatAmount)}</td>
                       <td colSpan={2}></td>

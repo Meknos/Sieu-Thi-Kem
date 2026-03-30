@@ -67,9 +67,9 @@ export default function S2aReportPage() {
   return (
     <>
       <Header
-        title="Sổ chi tiết doanh thu S2a-HKD"
+        title="Sổ doanh thu S2a-HKD"
         subtitle={`Tháng ${month}/${year}`}
-        onMenuClick={() => {}}
+        onMenuClick={() => { }}
         actions={
           <div className="flex gap-2">
             <button onClick={loadReport} className="btn btn-secondary" disabled={loading} title="Tải lại">
@@ -119,7 +119,6 @@ export default function S2aReportPage() {
           </div>
         </div>
 
-        {/* Loading state */}
         {loading && (
           <div className="card">
             <div className="card-body py-16 text-center text-gray-400">
@@ -129,141 +128,200 @@ export default function S2aReportPage() {
           </div>
         )}
 
-        {/* S2a Report Table */}
+        {/* S2a Report — theo mẫu TT 152/2025/TT-BTC */}
         {!loading && report && (
           <div className="card" id="s2a-report">
-            {/* Report Header */}
-            <div className="p-6 text-center border-b border-gray-200">
-              <p className="text-sm text-gray-500 mb-1">Mẫu số: S2a-HKD</p>
-              <p className="text-xs text-gray-400 mb-4">
-                (Ban hành kèm theo Thông tư số 88/2021/TT-BTC ngày 11/10/2021)
-              </p>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">
-                SỔ CHI TIẾT DOANH THU BÁN HÀNG HÓA, DỊCH VỤ
-              </h2>
-              <p className="text-sm text-gray-600">Tháng {month} năm {year}</p>
-              <div className="mt-4 text-left max-w-xl mx-auto text-sm text-gray-600 space-y-1">
-                <p><strong>Họ và tên người nộp thuế:</strong> {report.owner_name || '—'}</p>
-                <p><strong>Mã số thuế:</strong> {report.tax_code || '—'}</p>
-                <p><strong>Địa chỉ:</strong> {report.address || '—'}</p>
-              </div>
-              {(!report.owner_name || report.owner_name === 'Chưa cập nhật') && (
-                <p className="mt-3 text-xs text-orange-500">
-                  ⚠ Thông tin kinh doanh chưa đủ.{' '}
-                  <a href="/dashboard/settings" className="underline font-medium">Cập nhật tại đây</a>
-                </p>
-              )}
-            </div>
+            <div className="p-6">
 
-            {/* Data Table */}
-            <div className="table-container">
-              <table className="data-table">
+              {/* ── PHẦN ĐẦU FORM ── */}
+              <div className="flex justify-between items-start mb-2">
+                {/* Trái: thông tin hộ KD */}
+                <div className="text-sm text-gray-800 space-y-1">
+                  <p>
+                    <span className="font-semibold">HỘ, CÁ NHÂN KINH DOANH: </span>
+                    <span className="border-b border-dotted border-gray-400 inline-block min-w-[200px] ml-1">
+                      {report.owner_name || ''}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold">Địa chỉ: </span>
+                    <span className="border-b border-dotted border-gray-400 inline-block min-w-[250px] ml-1">
+                      {report.address || ''}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold">Mã số thuế: </span>
+                    <span className="border-b border-dotted border-gray-400 inline-block min-w-[150px] ml-1 font-mono">
+                      {report.tax_code || ''}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Phải: số mẫu */}
+                <div className="text-right text-xs text-gray-500 space-y-0.5 max-w-[200px]">
+                  <p className="font-semibold text-sm text-gray-700">Mẫu số S2a-HKD</p>
+                  <p>(Kèm theo Thông tư số 152/2025/TT-BTC</p>
+                  <p>ngày 31 tháng 12 năm 2025 của Bộ trưởng</p>
+                  <p>Bộ Tài Chính)</p>
+                </div>
+              </div>
+
+              {/* ── TIÊU ĐỀ ── */}
+              <div className="text-center my-4">
+                <h2 className="text-xl font-bold uppercase tracking-wide text-gray-900">
+                  Sổ doanh thu bán hàng hóa, dịch vụ
+                </h2>
+              </div>
+
+              {/* ── THÔNG TIN KỲ KÊ KHAI ── */}
+              <div className="flex gap-8 text-sm text-gray-700 mb-4">
+                <p>
+                  Địa điểm kinh doanh:{' '}
+                  <span className="border-b border-dotted border-gray-400 inline-block min-w-[180px]">
+                    {report.address || ''}
+                  </span>
+                </p>
+                <p>
+                  Kỳ kê khai:{' '}
+                  <span className="border-b border-dotted border-gray-400 inline-block min-w-[120px]">
+                    Tháng {month}/{year}
+                  </span>
+                </p>
+                <p>
+                  Đơn vị tính:{' '}
+                  <span className="border-b border-dotted border-gray-400 inline-block min-w-[80px]">
+                    VNĐ
+                  </span>
+                </p>
+              </div>
+
+              {/* ── BẢNG DỮ LIỆU ── */}
+              <table className="w-full border-collapse text-sm" style={{ border: '1px solid #333' }}>
                 <thead>
-                  <tr className="bg-blue-50">
-                    <th className="text-center" style={{ width: '50px' }}>STT</th>
-                    <th>Ngày, tháng ghi sổ</th>
-                    <th>Số hiệu chứng từ</th>
-                    <th>Diễn giải nội dung</th>
-                    <th className="text-right">Doanh thu bán HHDV (VNĐ)</th>
-                    <th>Ghi chú</th>
+                  <tr style={{ background: '#f5f5f5' }}>
+                    {/* Nhóm CHỨNG TỪ */}
+                    <th
+                      colSpan={2}
+                      className="text-center font-bold py-2 px-2"
+                      style={{ border: '1px solid #333', width: '240px' }}
+                    >
+                      CHỨNG TỪ
+                    </th>
+                    <th
+                      className="text-center font-bold py-2 px-2"
+                      style={{ border: '1px solid #333' }}
+                    >
+                      DIỄN GIẢI
+                    </th>
+                    <th
+                      className="text-center font-bold py-2 px-2"
+                      style={{ border: '1px solid #333', width: '160px' }}
+                    >
+                      SỐ TIỀN
+                    </th>
+                  </tr>
+                  <tr style={{ background: '#f5f5f5' }}>
+                    <th
+                      className="text-center py-1.5 px-2 text-xs"
+                      style={{ border: '1px solid #333', width: '120px' }}
+                    >
+                      Số hiệu
+                    </th>
+                    <th
+                      className="text-center py-1.5 px-2 text-xs"
+                      style={{ border: '1px solid #333', width: '120px' }}
+                    >
+                      Ngày tháng
+                    </th>
+                    <th style={{ border: '1px solid #333' }}></th>
+                    <th style={{ border: '1px solid #333' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="bg-gray-50 font-medium">
-                    <td className="text-center">A</td>
-                    <td>B</td>
-                    <td>C</td>
-                    <td>D</td>
-                    <td className="text-right">1</td>
-                    <td>2</td>
-                  </tr>
-                  <tr className="bg-yellow-50 font-medium">
-                    <td className="text-center">—</td>
-                    <td>—</td>
-                    <td>—</td>
-                    <td className="font-bold">Số dư đầu kỳ</td>
-                    <td className="text-right font-mono">0</td>
-                    <td>—</td>
-                  </tr>
-
                   {report.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={6}>
-                        <div className="empty-state py-12">
-                          <BookOpen className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                          <p>Chưa có doanh thu trong tháng {month}/{year}</p>
-                        </div>
+                      <td colSpan={4} className="text-center py-12 text-gray-400" style={{ border: '1px solid #333' }}>
+                        Chưa có doanh thu trong tháng {month}/{year}
                       </td>
                     </tr>
                   ) : (
                     report.rows.map((row, idx) => (
                       <tr key={idx}>
-                        <td className="text-center">{idx + 1}</td>
-                        <td className="font-mono">{formatDate(row.date)}</td>
-                        <td className="font-mono text-blue-600">{row.invoice_number}</td>
-                        <td>{row.description}</td>
-                        <td className="text-right font-mono font-medium">{formatCurrency(row.revenue)}</td>
-                        <td>—</td>
+                        <td className="py-1.5 px-2 font-mono text-center" style={{ border: '1px solid #333' }}>
+                          {row.invoice_number}
+                        </td>
+                        <td className="py-1.5 px-2 font-mono text-center" style={{ border: '1px solid #333' }}>
+                          {formatDate(row.date)}
+                        </td>
+                        <td className="py-1.5 px-3" style={{ border: '1px solid #333' }}>
+                          {row.description}
+                        </td>
+                        <td className="py-1.5 px-3 text-right font-mono" style={{ border: '1px solid #333' }}>
+                          {formatCurrency(row.revenue)}
+                        </td>
                       </tr>
                     ))
                   )}
 
-                  <tr className="bg-yellow-50 font-bold border-t-2 border-gray-300">
-                    <td colSpan={4} className="text-right">Cộng phát sinh trong kỳ:</td>
-                    <td className="text-right font-mono text-lg text-green-700">
+                  {/* ── TỔNG DOANH THU ── */}
+                  <tr style={{ background: '#f9f9f9' }}>
+                    <td
+                      colSpan={3}
+                      className="py-2 px-3 text-center font-bold"
+                      style={{ border: '1px solid #333' }}
+                    >
+                      TỔNG DOANH THU
+                    </td>
+                    <td className="py-2 px-3 text-right font-bold font-mono text-green-700" style={{ border: '1px solid #333' }}>
                       {formatCurrency(totalRevenue)}
                     </td>
-                    <td></td>
                   </tr>
-                  <tr className="bg-gray-50 font-bold">
-                    <td colSpan={4} className="text-right">Số dư cuối kỳ:</td>
-                    <td className="text-right font-mono text-lg">
-                      {formatCurrency(totalRevenue)}
+
+                  {/* ── THUẾ GTGT ── */}
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="py-2 px-3 font-semibold text-center"
+                      style={{ border: '1px solid #333' }}
+                    >
+                      Tổng số thuế GTGT phải nộp
                     </td>
-                    <td></td>
+                    <td className="py-2 px-3 text-right font-mono font-semibold text-blue-700" style={{ border: '1px solid #333' }}>
+                      {formatCurrency(vatAmount)}
+                    </td>
+                  </tr>
+
+                  {/* ── THUẾ TNCN ── */}
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="py-2 px-3 font-semibold text-center"
+                      style={{ border: '1px solid #333' }}
+                    >
+                      Tổng số thuế TNCN phải nộp
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono font-semibold text-purple-700" style={{ border: '1px solid #333' }}>
+                      {formatCurrency(pitAmount)}
+                    </td>
                   </tr>
                 </tbody>
               </table>
-            </div>
 
-            {/* Tax Summary */}
-            <div className="p-6 border-t border-gray-200">
-              <div className="max-w-md space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Tổng doanh thu:</span>
-                  <span className="font-bold font-mono">{formatCurrency(totalRevenue)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Thuế GTGT ({report.vat_amount > 0 && totalRevenue > 0 ? Math.round(report.vat_amount / totalRevenue * 100) : 8}%):</span>
-                  <span className="font-bold font-mono text-blue-600">{formatCurrency(vatAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Thuế TNCN ({report.pit_amount > 0 && totalRevenue > 0 ? (report.pit_amount / totalRevenue * 100).toFixed(1) : 1.5}%):</span>
-                  <span className="font-bold font-mono text-purple-600">{formatCurrency(pitAmount)}</span>
-                </div>
-                <hr />
-                <div className="flex justify-between">
-                  <span className="font-medium">Tổng thuế phải nộp:</span>
-                  <span className="font-bold font-mono text-red-600 text-lg">
-                    {formatCurrency(vatAmount + pitAmount)}
-                  </span>
-                </div>
+              {/* ── CHỮ KÝ ── */}
+              <div className="mt-8 text-right text-sm text-gray-700 space-y-1 mr-8">
+                <p className="italic">Ngày ... tháng ... năm ......</p>
+                <p className="font-bold uppercase">Người đại diện hộ kinh doanh</p>
+                <p className="text-gray-500 text-xs italic">(Ký, ghi rõ họ tên, đóng dấu (nếu có))</p>
+                <div className="h-16"></div>
+                <p className="font-semibold">{report.owner_name}</p>
               </div>
 
-              {/* Signature area */}
-              <div className="mt-8 grid grid-cols-2 gap-8 text-center text-sm">
-                <div>
-                  <p className="font-medium">Người ghi sổ</p>
-                  <p className="text-gray-400 text-xs mt-1">(Ký, họ tên)</p>
-                  <div className="h-20"></div>
-                </div>
-                <div>
-                  <p className="font-medium">Người nộp thuế</p>
-                  <p className="text-gray-400 text-xs mt-1">(Ký, họ tên, đóng dấu)</p>
-                  <div className="h-20"></div>
-                  <p className="font-medium">{report.owner_name}</p>
-                </div>
-              </div>
+              {(!report.owner_name || report.owner_name === 'Chưa cập nhật') && (
+                <p className="mt-4 text-xs text-orange-500 text-center">
+                  ⚠ Thông tin kinh doanh chưa đủ.{' '}
+                  <a href="/dashboard/settings" className="underline font-medium">Cập nhật tại đây</a>
+                </p>
+              )}
             </div>
           </div>
         )}
