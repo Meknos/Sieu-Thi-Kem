@@ -276,7 +276,7 @@ export default function SalesPage() {
       const summaryParts = validItems.map(it => {
         const product = products.find(p => p.id === it.product_id);
         if (it.input_unit === 'box' && product?.box_quantity) {
-          return `${it.quantity} thùng (= ${toActualQty(it, product)} ${product.unit})`;
+          return `${it.quantity} ${product?.box_unit || 'thùng'} (= ${toActualQty(it, product)} ${product.unit})`;
         }
         return `${it.quantity} ${product?.unit || 'cái'}`;
       });
@@ -526,7 +526,7 @@ export default function SalesPage() {
                       return {
                         value: p.id,
                         label: `${p.code} - ${p.name}`,
-                        sublabel: `Tồn: ${stock} ${p.unit}${p.box_quantity ? ` (${Math.floor(stock / p.box_quantity)} thùng)` : ''} · Giá bán: ${p.selling_price.toLocaleString('vi-VN')}đ`,
+                      sublabel: `Tồn: ${stock} ${p.unit}${p.box_quantity ? ` (${Math.floor(stock / p.box_quantity)} ${p.box_unit || 'thùng'})` : ''} · Giá bán: ${p.selling_price.toLocaleString('vi-VN')}đ`,
                       };
                     })}
                   />
@@ -545,7 +545,7 @@ export default function SalesPage() {
                       </strong>
                       {hasBox && product.box_quantity && stockPieces > 0 && (
                         <span className="text-gray-400 font-normal">
-                          &nbsp;(= {Math.floor(stockPieces / product.box_quantity)} thùng
+                          &nbsp;(= {Math.floor(stockPieces / product.box_quantity)} {product.box_unit || 'thùng'}
                           {stockPieces % product.box_quantity > 0 ? ` + ${stockPieces % product.box_quantity} ${product.unit}` : ''})
                         </span>
                       )}
@@ -577,7 +577,7 @@ export default function SalesPage() {
                           onClick={() => updateItem(idx, 'input_unit', 'box')}
                           className={`flex-1 py-1.5 text-xs font-medium transition-colors ${item.input_unit === 'box' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
-                          Thùng
+                          {product?.box_unit || 'Thùng'}
                         </button>
                       </div>
                     </div>
@@ -585,7 +585,7 @@ export default function SalesPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">
-                      Số lượng {item.input_unit === 'box' ? '(thùng)' : product ? `(${product.unit})` : ''}
+                      Số lượng {item.input_unit === 'box' ? `(${product?.box_unit || 'thùng'})` : product ? `(${product.unit})` : ''}
                       {product && (
                         maxInUnit > 0
                           ? <span className="text-gray-400 ml-1">· tối đa {maxInUnit}</span>
@@ -605,7 +605,7 @@ export default function SalesPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">
-                      Đơn giá {item.input_unit === 'box' ? '(/ thùng)' : product ? `(/ ${product.unit})` : ''}
+                      Đơn giá {item.input_unit === 'box' ? `(/ ${product?.box_unit || 'thùng'})` : product ? `(/ ${product.unit})` : ''}
                     </label>
                     <input
                       className="form-input text-right"
@@ -625,7 +625,7 @@ export default function SalesPage() {
                       {item.input_unit === 'box' && hasBox ? (
                         <span className="flex items-center gap-1 text-green-600 font-medium">
                           <Package className="w-3 h-3" />
-                          {item.quantity} thùng × {product.box_quantity} = <strong>{actualQty} {product.unit}</strong>
+                          {item.quantity} {product.box_unit || 'thùng'} × {product.box_quantity} = <strong>{actualQty} {product.unit}</strong>
                           {' · '}
                           Giá/cái: {formatCurrency(pricePerPiece)}
                         </span>

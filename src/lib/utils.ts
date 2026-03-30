@@ -171,7 +171,7 @@ export function getPaymentMethodLabel(method: string): string {
 // Status label
 export function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    draft: 'Nháp',
+    draft: 'Nợ',
     completed: 'Hoàn thành',
     cancelled: 'Đã hủy',
   };

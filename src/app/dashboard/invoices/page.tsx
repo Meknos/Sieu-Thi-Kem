@@ -185,7 +185,7 @@ export default function InvoicesPage() {
       const statusLabels: Record<string, string> = {
         completed: 'Hoàn thành',
         cancelled: 'Đã hủy',
-        draft: 'Nháp',
+        draft: 'Nợ',
       };
       toast.success(`Đã đổi trạng thái → ${statusLabels[newStatus] || newStatus}`);
     } catch (err: any) {
@@ -198,7 +198,7 @@ export default function InvoicesPage() {
       <Header
         title="Hóa đơn"
         subtitle="Quản lý đơn hàng và hóa đơn bán hàng"
-        onMenuClick={() => {}}
+        onMenuClick={() => { }}
         actions={
           <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
             <Plus className="w-4 h-4" /> Tạo đơn hàng
@@ -224,7 +224,7 @@ export default function InvoicesPage() {
           <select className="form-select" style={{ width: 'auto' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="all">Tất cả</option>
             <option value="completed">Hoàn thành</option>
-            <option value="draft">Nháp</option>
+            <option value="draft">Nợ</option>
             <option value="cancelled">Đã hủy</option>
           </select>
         </div>
@@ -298,7 +298,7 @@ export default function InvoicesPage() {
                             value={inv.status}
                             onChange={(e) => handleStatusChange(inv, e.target.value)}
                           >
-                            <option value="draft">Nháp</option>
+                            <option value="draft">Nợ</option>
                             <option value="completed">Hoàn thành</option>
                             <option value="cancelled">Đã hủy</option>
                           </select>

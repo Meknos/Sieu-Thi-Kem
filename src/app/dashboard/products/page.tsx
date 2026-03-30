@@ -20,6 +20,7 @@ const emptyProduct: ProductInput = {
   purchase_price: 0,
   selling_price: 0,
   box_quantity: undefined,
+  box_unit: 'thùng',
   description: '',
 };
 
@@ -81,6 +82,7 @@ export default function ProductsPage() {
       purchase_price: product.purchase_price,
       selling_price: product.selling_price,
       box_quantity: product.box_quantity ?? undefined,
+      box_unit: product.box_unit || 'thùng',
       description: product.description || '',
     });
     setShowModal(true);
@@ -221,11 +223,11 @@ export default function ProductsPage() {
                       <td className="font-medium">{product.name}</td>
                       <td>{product.unit}</td>
                       <td className="text-center">
-                        {product.box_quantity
-                          ? <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-2 py-0.5 font-mono">1 thùng = {product.box_quantity} {product.unit}</span>
-                          : <span className="text-gray-300 text-xs">—</span>
-                        }
-                      </td>
+                         {product.box_quantity
+                           ? <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded px-2 py-0.5 font-mono">1 {product.box_unit || 'thùng'} = {product.box_quantity} {product.unit}</span>
+                           : <span className="text-gray-300 text-xs">—</span>
+                         }
+                       </td>
                       <td className="text-right font-mono">{formatCurrency(product.purchase_price)}</td>
                       <td className="text-right font-mono">{formatCurrency(product.selling_price)}</td>
                       <td className="text-right font-mono text-green-600">
@@ -338,21 +340,37 @@ export default function ProductsPage() {
           </div>
         </div>
         <div className="form-group">
-          <label className="form-label">Số {form.unit || 'cái'} trong 1 thùng <span className="text-gray-400 font-normal text-xs">(để trống nếu không dùng thùng)</span></label>
-          <input
-            className="form-input"
-            type="number"
-            min="1"
-            placeholder="VD: 24"
-            value={form.box_quantity ?? ''}
-            onChange={(e) => setForm({ ...form, box_quantity: e.target.value ? Number(e.target.value) : undefined })}
-          />
-          {form.box_quantity && form.box_quantity > 0 && (
-            <p className="text-xs text-blue-600 mt-1">
-              ✓ 1 thùng = {form.box_quantity} {form.unit || 'cái'} — Sẽ cho phép nhập/xuất theo thùng
-            </p>
-          )}
-        </div>
+           <label className="form-label">
+             Số {form.unit || 'cái'} trong 1{' '}
+             <select
+               className="form-select inline-block ml-1 py-0.5 px-2 text-sm"
+               style={{ width: 'auto', display: 'inline-block', height: 'auto' }}
+               value={form.box_unit || 'thùng'}
+               onChange={(e) => setForm({ ...form, box_unit: e.target.value })}
+             >
+               <option value="thùng">thùng</option>
+               <option value="hộp">hộp</option>
+               <option value="bao">bao</option>
+               <option value="gói">gói</option>
+               <option value="kiện">kiện</option>
+               <option value="thùng carton">thùng carton</option>
+             </select>
+             {' '}<span className="text-gray-400 font-normal text-xs">(làm trống nếu không dùng)</span>
+           </label>
+           <input
+             className="form-input"
+             type="number"
+             min="1"
+             placeholder="VD: 24"
+             value={form.box_quantity ?? ''}
+             onChange={(e) => setForm({ ...form, box_quantity: e.target.value ? Number(e.target.value) : undefined })}
+           />
+           {form.box_quantity && form.box_quantity > 0 && (
+             <p className="text-xs text-blue-600 mt-1">
+               ✓ 1 {form.box_unit || 'thùng'} = {form.box_quantity} {form.unit || 'cái'} — Sẽ cho phép nhập/xuất theo {form.box_unit || 'thùng'}
+             </p>
+           )}
+         </div>
         <div className="form-group">
           <label className="form-label">Mô tả</label>
           <textarea

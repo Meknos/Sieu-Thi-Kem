@@ -217,7 +217,7 @@ export default function PurchasesPage() {
       const summaryParts = validItems.map(it => {
         const product = products.find(p => p.id === it.product_id);
         if (it.input_unit === 'box' && product?.box_quantity) {
-          return `${it.quantity} thùng (= ${toActualQty(it, product)} ${product.unit})`;
+          return `${it.quantity} ${product?.box_unit || 'thùng'} (= ${toActualQty(it, product)} ${product.unit})`;
         }
         return `${it.quantity} ${product?.unit || 'cái'}`;
       });
@@ -417,7 +417,7 @@ export default function PurchasesPage() {
                       value: p.id,
                       label: `${p.code} - ${p.name}`,
                       sublabel: p.box_quantity
-                        ? `ĐVT: ${p.unit} | 1 thùng = ${p.box_quantity} ${p.unit} | Giá nhập: ${p.purchase_price.toLocaleString('vi-VN')}đ`
+                        ? `ĐVT: ${p.unit} | 1 ${p.box_unit || 'thùng'} = ${p.box_quantity} ${p.unit} | Giá nhập: ${p.purchase_price.toLocaleString('vi-VN')}đ`
                         : `ĐVT: ${p.unit} | Giá nhập: ${p.purchase_price.toLocaleString('vi-VN')}đ`,
                     }))}
                   />
@@ -445,7 +445,7 @@ export default function PurchasesPage() {
                           onClick={() => updateItem(idx, 'input_unit', 'box')}
                           className={`flex-1 py-1.5 text-xs font-medium transition-colors ${item.input_unit === 'box' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
                         >
-                          Thùng
+                          {product?.box_unit || 'Thùng'}
                         </button>
                       </div>
                     </div>
@@ -453,7 +453,7 @@ export default function PurchasesPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">
-                      Số lượng {item.input_unit === 'box' ? '(thùng)' : product ? `(${product.unit})` : ''}
+                      Số lượng {item.input_unit === 'box' ? `(${product?.box_unit || 'thùng'})` : product ? `(${product.unit})` : ''}
                     </label>
                     <input
                       className="form-input text-right"
@@ -467,7 +467,7 @@ export default function PurchasesPage() {
 
                   <div>
                     <label className="text-xs text-gray-500 mb-1 block">
-                      Đơn giá {item.input_unit === 'box' ? '(/ thùng)' : product ? `(/ ${product.unit})` : ''}
+                      Đơn giá {item.input_unit === 'box' ? `(/ ${product?.box_unit || 'thùng'})` : product ? `(/ ${product.unit})` : ''}
                     </label>
                     <input
                       className="form-input text-right"
@@ -487,7 +487,7 @@ export default function PurchasesPage() {
                       {item.input_unit === 'box' && hasBox ? (
                         <span className="flex items-center gap-1 text-blue-600 font-medium">
                           <Package className="w-3 h-3" />
-                          {item.quantity} thùng × {product.box_quantity} = <strong>{actualQty} {product.unit}</strong>
+                          {item.quantity} {product.box_unit || 'thùng'} × {product.box_quantity} = <strong>{actualQty} {product.unit}</strong>
                           {' · '}
                           Giá/cái: {formatCurrency(pricePerPiece)}
                         </span>
