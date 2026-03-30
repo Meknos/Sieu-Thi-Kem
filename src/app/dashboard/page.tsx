@@ -89,9 +89,9 @@ export default function DashboardPage() {
   return (
     <>
       <Header
-        title="Dashboard"
+        title="Dashboard1"
         subtitle={`Tổng quan kinh doanh • ${formatDate(new Date())}`}
-        onMenuClick={() => {}}
+        onMenuClick={() => { }}
       />
 
       <div className="page-content">
@@ -156,13 +156,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-xs text-blue-500 mt-1">Tháng này</div>
               </div>
-              <div className="p-4 rounded-lg bg-purple-50 border border-purple-100">
-                <div className="text-xs text-purple-600 font-medium mb-1">Thuế TNCN (1.5%)</div>
-                <div className="text-xl font-bold text-purple-700">
-                  {formatCurrency(Math.round(stats.total_revenue_month * 0.015))}
-                </div>
-                <div className="text-xs text-purple-500 mt-1">Tháng này</div>
-              </div>
+
               <div className="p-4 rounded-lg bg-orange-50 border border-orange-100">
                 <div className="text-xs text-orange-600 font-medium mb-1">Lợi nhuận ước tính</div>
                 <div className="text-xl font-bold text-orange-700">

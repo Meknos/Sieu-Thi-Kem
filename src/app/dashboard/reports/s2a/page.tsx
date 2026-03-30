@@ -33,6 +33,7 @@ export default function S2aReportPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [report, setReport] = useState<S2aReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [manualPitAmount, setManualPitAmount] = useState<string>('');
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -51,18 +52,20 @@ export default function S2aReportPage() {
   useEffect(() => { loadReport(); }, [loadReport]);
 
   function handleExportPDF() {
-    const url = `/api/reports/s2a/pdf?month=${month}&year=${year}&print=1`;
+    const pit = manualPitAmount !== '' ? `&pit=${encodeURIComponent(manualPitAmount)}` : '';
+    const url = `/api/reports/s2a/pdf?month=${month}&year=${year}&print=1${pit}`;
     window.open(url, '_blank');
   }
 
   function handlePreview() {
-    const url = `/api/reports/s2a/pdf?month=${month}&year=${year}`;
+    const pit = manualPitAmount !== '' ? `&pit=${encodeURIComponent(manualPitAmount)}` : '';
+    const url = `/api/reports/s2a/pdf?month=${month}&year=${year}${pit}`;
     window.open(url, '_blank');
   }
 
   const totalRevenue = report?.total_revenue ?? 0;
   const vatAmount = report?.vat_amount ?? 0;
-  const pitAmount = report?.pit_amount ?? 0;
+  const pitAmount = manualPitAmount !== '' ? (parseFloat(manualPitAmount.replace(/[^0-9.]/g, '')) || 0) : (report?.pit_amount ?? 0);
 
   return (
     <>
@@ -116,6 +119,37 @@ export default function S2aReportPage() {
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
+          </div>
+          {/* Manual TNCN input */}
+          <div className="filter-group items-center">
+            <label className="whitespace-nowrap">Thuế TNCN (nhập tay):</label>
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="numeric"
+                className="form-input pr-8"
+                style={{ width: 160 }}
+                placeholder={`Tự tính: ${(report?.pit_amount ?? 0).toLocaleString('vi-VN')} đ`}
+                value={manualPitAmount}
+                onChange={(e) => {
+                  // Only allow digits
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setManualPitAmount(raw);
+                }}
+              />
+              {manualPitAmount !== '' && (
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                  onClick={() => setManualPitAmount('')}
+                  title="Xóa, dùng giá trị tự tính"
+                >✕</button>
+              )}
+            </div>
+            {manualPitAmount !== '' && (
+              <span className="text-xs text-blue-600 font-medium ml-1">
+                = {Number(manualPitAmount).toLocaleString('vi-VN')} đ
+              </span>
+            )}
           </div>
         </div>
 
@@ -290,7 +324,6 @@ export default function S2aReportPage() {
                       {formatCurrency(vatAmount)}
                     </td>
                   </tr>
-
                   {/* ── THUẾ TNCN ── */}
                   <tr>
                     <td

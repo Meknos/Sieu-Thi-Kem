@@ -43,9 +43,7 @@ export default function YearlyReportPage() {
   const totalCost = report?.total_cost ?? 0;
   const profit = totalRevenue - totalCost;
   const vatAmount = report?.vat_amount ?? 0;
-  const pitAmount = report?.pit_amount ?? 0;
   const vatRate = report?.business_info?.vat_rate ?? 8;
-  const pitRate = report?.business_info?.pit_rate ?? 1.5;
   const profitMargin = totalRevenue > 0 ? ((profit / totalRevenue) * 100).toFixed(1) : '0';
   const maxRevenue = Math.max(...quarterlyData.map(q => q.revenue), 1);
 
@@ -133,7 +131,7 @@ export default function YearlyReportPage() {
             </div>
 
             {/* Tax Summary */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 gap-4 mb-6" style={{ maxWidth: '50%' }}>
               <div className="card p-4 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
                   <span className="text-blue-600 font-bold text-sm">{vatRate}%</span>
@@ -141,15 +139,6 @@ export default function YearlyReportPage() {
                 <div>
                   <div className="text-xs text-gray-500">Thuế GTGT phải nộp</div>
                   <div className="text-lg font-bold text-blue-600">{formatCurrency(vatAmount)}</div>
-                </div>
-              </div>
-              <div className="card p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                  <span className="text-purple-600 font-bold text-sm">{pitRate}%</span>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Thuế TNCN phải nộp</div>
-                  <div className="text-lg font-bold text-purple-600">{formatCurrency(pitAmount)}</div>
                 </div>
               </div>
             </div>
@@ -205,14 +194,11 @@ export default function YearlyReportPage() {
                       <th className="text-right">Chi phí</th>
                       <th className="text-right">Lợi nhuận</th>
                       <th className="text-right">GTGT ({vatRate}%)</th>
-                      <th className="text-right">TNCN ({pitRate}%)</th>
-                      <th className="text-right">Tổng thuế</th>
                     </tr>
                   </thead>
                   <tbody>
                     {quarterlyData.map((q) => {
                       const qVat = Math.round(q.revenue * vatRate / 100);
-                      const qPit = Math.round(q.revenue * pitRate / 100);
                       return (
                         <tr key={q.quarter}>
                           <td className="font-medium">Quý {q.quarter}</td>
@@ -220,8 +206,6 @@ export default function YearlyReportPage() {
                           <td className="text-right font-mono text-red-600">{formatCurrency(q.cost)}</td>
                           <td className="text-right font-mono font-medium">{formatCurrency(q.revenue - q.cost)}</td>
                           <td className="text-right font-mono text-blue-600">{formatCurrency(qVat)}</td>
-                          <td className="text-right font-mono text-purple-600">{formatCurrency(qPit)}</td>
-                          <td className="text-right font-mono font-medium text-red-600">{formatCurrency(qVat + qPit)}</td>
                         </tr>
                       );
                     })}
@@ -231,8 +215,6 @@ export default function YearlyReportPage() {
                       <td className="text-right font-mono text-red-700">{formatCurrency(totalCost)}</td>
                       <td className="text-right font-mono">{formatCurrency(profit)}</td>
                       <td className="text-right font-mono text-blue-700">{formatCurrency(vatAmount)}</td>
-                      <td className="text-right font-mono text-purple-700">{formatCurrency(pitAmount)}</td>
-                      <td className="text-right font-mono text-red-700 text-lg">{formatCurrency(vatAmount + pitAmount)}</td>
                     </tr>
                   </tbody>
                 </table>

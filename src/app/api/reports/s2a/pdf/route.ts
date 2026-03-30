@@ -40,7 +40,9 @@ export async function GET(request: NextRequest) {
 
   const vatRate = business?.vat_rate || 8;
   const pitRate = business?.pit_rate || 1.5;
-  const pitAmount = Math.round(totalWithVAT * pitRate / 100);
+  // Nếu người dùng truyền ?pit=... thì dùng giá trị đó, ngược lại tự tính
+  const pitOverride = searchParams.get('pit');
+  const pitAmount = pitOverride !== null ? (parseFloat(pitOverride) || 0) : Math.round(totalWithVAT * pitRate / 100);
 
   const businessName = business?.business_name || 'Chưa cập nhật';
   const ownerName    = business?.owner_name    || 'Chưa cập nhật';

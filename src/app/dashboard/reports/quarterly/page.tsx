@@ -39,9 +39,7 @@ export default function QuarterlyReportPage() {
   const totalCost = report?.total_cost ?? 0;
   const profit = totalRevenue - totalCost;
   const vatAmount = report?.vat_amount ?? 0;
-  const pitAmount = report?.pit_amount ?? 0;
   const vatRate = report?.business_info?.vat_rate ?? 8;
-  const pitRate = report?.business_info?.pit_rate ?? 1.5;
   const maxRevenue = Math.max(...monthlyData.map(m => m.revenue), 1);
 
   return (
@@ -91,7 +89,6 @@ export default function QuarterlyReportPage() {
                 { label: 'Doanh thu', value: totalRevenue, color: 'green' },
                 { label: 'Chi phí', value: totalCost, color: 'red' },
                 { label: `Thuế GTGT (${vatRate}%)`, value: vatAmount, color: 'blue' },
-                { label: `Thuế TNCN (${pitRate}%)`, value: pitAmount, color: 'purple' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="stat-card">
                   <div className={`stat-icon ${color}`}><CalendarDays className="w-5 h-5" /></div>
@@ -153,7 +150,6 @@ export default function QuarterlyReportPage() {
                       <th className="text-right">Chi phí</th>
                       <th className="text-right">Lợi nhuận</th>
                       <th className="text-right">GTGT ({vatRate}%)</th>
-                      <th className="text-right">TNCN ({pitRate}%)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -164,7 +160,6 @@ export default function QuarterlyReportPage() {
                         <td className="text-right font-mono text-red-600">{formatCurrency(m.cost)}</td>
                         <td className="text-right font-mono font-medium">{formatCurrency(m.revenue - m.cost)}</td>
                         <td className="text-right font-mono text-blue-600">{formatCurrency(Math.round(m.revenue * vatRate / 100))}</td>
-                        <td className="text-right font-mono text-purple-600">{formatCurrency(Math.round(m.revenue * pitRate / 100))}</td>
                       </tr>
                     ))}
                     <tr className="font-bold bg-gray-50 border-t-2">
@@ -173,7 +168,6 @@ export default function QuarterlyReportPage() {
                       <td className="text-right font-mono text-red-700">{formatCurrency(totalCost)}</td>
                       <td className="text-right font-mono">{formatCurrency(profit)}</td>
                       <td className="text-right font-mono text-blue-700">{formatCurrency(vatAmount)}</td>
-                      <td className="text-right font-mono text-purple-700">{formatCurrency(pitAmount)}</td>
                     </tr>
                   </tbody>
                 </table>

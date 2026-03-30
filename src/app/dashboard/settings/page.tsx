@@ -18,7 +18,7 @@ const defaultBusiness: Partial<BusinessInfo> = {
   bank_name: '',
   business_type: 'retail',
   vat_rate: 8,
-  pit_rate: 1.5,
+
 };
 
 export default function SettingsPage() {
@@ -193,36 +193,17 @@ export default function SettingsPage() {
               <h2 className="card-title">Cấu hình thuế</h2>
             </div>
             <div className="card-body">
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Thuế suất GTGT (%)</label>
-                  <input
-                    className="form-input"
-                    type="number"
-                    step="0.5"
-                    value={form.vat_rate || 8}
-                    onChange={(e) => setForm({ ...form, vat_rate: Number(e.target.value) })}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Mặc định: 8% (theo Nghị định 72/2024/NĐ-CP)</p>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Thuế suất TNCN (%)</label>
-                  <input
-                    className="form-input"
-                    type="number"
-                    step="0.5"
-                    value={form.pit_rate || 1.5}
-                    onChange={(e) => setForm({ ...form, pit_rate: Number(e.target.value) })}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Mặc định: 1.5% (bán hàng hóa)</p>
-                </div>
-              </div>
-              <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 mt-4">
-                <p className="text-sm text-yellow-700">
-                  <strong>Lưu ý:</strong> Thuế suất GTGT giảm 2% (từ 10% xuống 8%) theo chính sách hỗ trợ.
-                  Thuế TNCN cho hộ kinh doanh bán hàng hóa là 1.5%, dịch vụ là 2%.
-                </p>
-              </div>
+              <div className="form-group">
+                 <label className="form-label">Thuế suất GTGT (%)</label>
+                 <input
+                   className="form-input"
+                   type="number"
+                   step="0.5"
+                   value={form.vat_rate || 8}
+                   onChange={(e) => setForm({ ...form, vat_rate: Number(e.target.value) })}
+                 />
+                 <p className="text-xs text-gray-400 mt-1">Mặc định: 8% (theo Nghị định 72/2024/NĐ-CP)</p>
+               </div>
             </div>
           </div>
         </div>
